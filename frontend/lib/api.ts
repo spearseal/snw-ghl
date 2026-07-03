@@ -21,7 +21,9 @@ export function clearSession() {
   localStorage.removeItem(EMAIL_KEY);
 }
 
-export async function apiFetch(path: string, options: RequestInit = {}) {
+const API_TIMEOUT_MS = 30_000;
+
+export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -29,7 +31,20 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(path, { ...options, headers });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(path, { ...options, headers, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Request timed out — the server took too long to respond. Please try again.');
+    }
+    throw new Error('Network error — could not reach the server. Please check your connection.');
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (res.status === 401 && typeof window !== 'undefined') {
     clearSession();
@@ -38,4 +53,13 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
     }
   }
   return res;
+}
+
+export async function apiFetchJson<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await apiFetch(path, options);
+  try {
+    return await res.json() as T;
+  } catch {
+    throw new Error(`Server returned an unexpected response (HTTP ${res.status}). Please try again.`);
+  }
 }
