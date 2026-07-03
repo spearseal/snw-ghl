@@ -38,7 +38,12 @@ app = FastAPI(
     version='1.0.0',
 )
 
-FRONTEND_ORIGIN = os.environ.get('FRONTEND_ORIGIN', 'http://localhost:3000')
+# Use Railway's public domain if available, otherwise localhost for dev
+railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
+if railway_domain:
+    FRONTEND_ORIGIN = f'https://{railway_domain}'
+else:
+    FRONTEND_ORIGIN = os.environ.get('FRONTEND_ORIGIN', 'http://localhost:3000')
 
 app.add_middleware(
     CORSMiddleware,
