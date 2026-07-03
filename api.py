@@ -14,6 +14,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from auth import get_current_user
@@ -160,6 +161,13 @@ def sync(user: str = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Sync failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Serve the exported Next.js frontend (single-service deploy).
+# Built via: cd frontend && NEXT_OUTPUT=export npm run build
+FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'out')
+if os.path.isdir(FRONTEND_DIR):
+    app.mount('/', StaticFiles(directory=FRONTEND_DIR, html=True), name='frontend')
 
 
 if __name__ == '__main__':

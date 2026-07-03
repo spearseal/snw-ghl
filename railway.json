@@ -5,7 +5,13 @@
     "nixpacksPlan": {
       "phases": {
         "setup": {
-          "nixPkgs": ["python312"]
+          "nixPkgs": ["python312", "nodejs_20"]
+        },
+        "frontend": {
+          "dependsOn": ["install"],
+          "cmds": [
+            "cd frontend && npm ci && NEXT_OUTPUT=export npm run build"
+          ]
         }
       }
     }
