@@ -6,12 +6,12 @@ requests==2.31.0
 urllib3==2.1.0
 
 # Snowflake connector
-snowflake-connector-python==3.6.0
+snowflake-connector-python==3.12.1
 snowflake-connector-python[pandas]
 
 # Data handling
 pandas==2.1.4
-pyarrow==14.0.2
+pyarrow==17.0.0
 
 # Security and encryption
 cryptography==41.0.7
