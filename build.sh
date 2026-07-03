@@ -1,9 +1,7 @@
 #!/bin/bash
-# Build script for the Next.js frontend.
-# Railpack detects and runs this automatically before starting the Python app.
-# The FastAPI backend serves the static export from frontend/out/ at /.
-
 set -e
+
+. /root/.profile
 
 echo "==> Installing frontend dependencies..."
 cd frontend
