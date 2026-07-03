@@ -38,16 +38,18 @@ app = FastAPI(
     version='1.0.0',
 )
 
+
 # Use Railway's public domain if available, otherwise localhost for dev
 railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
 if railway_domain:
     FRONTEND_ORIGIN = f'https://{railway_domain}'
 else:
-    FRONTEND_ORIGIN = os.environ.get('FRONTEND_ORIGIN', 'http://localhost:3000')
+  FRONTEND_ORIGIN = os.environ.get('FRONTEND_ORIGIN', '*')
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN],
+    allow_origins=['*'],  # Railway handles origin validation
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
@@ -173,6 +175,12 @@ def sync(user: str = Depends(get_current_user)):
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend', 'out')
 if os.path.isdir(FRONTEND_DIR):
     app.mount('/', StaticFiles(directory=FRONTEND_DIR, html=True), name='frontend')
+else:
+    logger.warning(
+        'Frontend build directory not found at %s — static files will not be served. '
+        'Run the build script to compile the Next.js frontend.',
+        FRONTEND_DIR,
+    )
 
 
 if __name__ == '__main__':

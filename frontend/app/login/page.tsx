@@ -18,20 +18,32 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/auth/${mode}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
+      let res: Response;
+      try {
+        res = await fetch(`/api/auth/${mode}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+      } catch {
+        throw new Error('Network error — could not reach the server. Please check your connection and try again.');
+      }
+
+      let data: Record<string, unknown>;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`Server returned an unexpected response (HTTP ${res.status}). Please try again.`);
+      }
+
       if (!res.ok) {
         throw new Error(
           typeof data.detail === 'string'
             ? data.detail
-            : data.detail?.[0]?.msg || `${mode} failed`
+            : (data.detail as Array<{ msg: string }>)?.[0]?.msg || `${mode} failed`
         );
       }
-      setSession(data.token, data.email);
+      setSession(data.token as string, data.email as string);
       router.push('/');
     } catch (e) {
       setError(e instanceof Error ? e.message : `${mode} failed`);
