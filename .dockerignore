@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Dev / tooling
+.git/
+.gitignore
+*.md
+.env
+.env.*
+!.env.example
+
+# Tests
+test.txt
