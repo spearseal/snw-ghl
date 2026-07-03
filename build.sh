@@ -5,6 +5,8 @@
 
 set -e
 
+. /root/.profile
+
 echo "==> Installing frontend dependencies..."
 cd frontend
 npm ci
