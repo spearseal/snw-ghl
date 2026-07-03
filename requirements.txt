@@ -1,0 +1,42 @@
+# GoHighLevel + Snowflake Integration with HIPAA Compliance
+# Python dependencies
+
+# HTTP requests
+requests==2.31.0
+urllib3==2.1.0
+
+# Snowflake connector
+snowflake-connector-python==3.6.0
+snowflake-connector-python[pandas]
+
+# Data handling
+pandas==2.1.4
+pyarrow==14.0.2
+
+# Security and encryption
+cryptography==41.0.7
+python-dotenv==1.0.0
+
+# Logging and monitoring
+python-json-logger==2.0.7
+
+# Date/time handling
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Validation
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Async support (optional, for future enhancements)
+aiohttp==3.9.1
+
+# API server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# Text chunking for query engine
+chonkie==0.4.1
+
+# Authentication
+PyJWT==2.8.0
