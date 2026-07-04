@@ -98,6 +98,7 @@ def _seed_defaults():
                 'database': settings.snowflake_database,
                 'schema': settings.snowflake_schema,
                 'role': settings.snowflake_role or '',
+                'passcode': settings.snowflake_passcode or '',
             }),
             'created_by': 'system',
             'created_at': datetime.now(timezone.utc).isoformat(),
@@ -182,6 +183,9 @@ def create_connection(req: ConnectionCreate, user: str = Depends(get_current_use
     connections = _load_connections()
     if any(c['name'].lower() == req.name.strip().lower() for c in connections):
         raise HTTPException(status_code=409, detail='A connection with this name already exists')
+
+    if req.type == 'snowflake' and not (req.config.get('passcode') or '').strip():
+        raise HTTPException(status_code=422, detail='A passcode (MFA) is required for Snowflake connections')
 
     conn = {
         'id': str(uuid.uuid4()),

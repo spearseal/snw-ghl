@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     snowflake_database: str = Field(default="", env="SNOWFLAKE_DATABASE")
     snowflake_schema: str = Field(default="PUBLIC", env="SNOWFLAKE_SCHEMA")
     snowflake_role: Optional[str] = Field(None, env="SNOWFLAKE_ROLE")
+    snowflake_passcode: str = Field(default="", env="SNOWFLAKE_PASSCODE")
     
     # Security Configuration
     encryption_key: str = Field(default="", env="ENCRYPTION_KEY")

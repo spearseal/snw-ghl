@@ -33,7 +33,7 @@ const SNOWFLAKE_FIELDS = [
   { key: 'database', label: 'Database', required: false },
   { key: 'schema', label: 'Schema', required: false },
   { key: 'role', label: 'Role', required: false },
-  { key: 'passcode', label: 'Passcode (MFA)', required: false, secret: true },
+  { key: 'passcode', label: 'Passcode (MFA)', required: true, secret: true },
 ];
 
 const GHL_FIELDS = [
