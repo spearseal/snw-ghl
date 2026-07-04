@@ -4,8 +4,8 @@ Handles environment variables and settings with validation
 """
 import os
 from typing import Optional
-from pydantic import Field, validator
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -44,7 +44,14 @@ class Settings(BaseSettings):
     batch_size: int = Field(default=100, env="BATCH_SIZE")
     max_retries: int = Field(default=3, env="MAX_RETRIES")
     
-    @validator('encryption_key')
+    model_config = SettingsConfigDict(
+        env_file='.env',
+        env_file_encoding='utf-8',
+        case_sensitive=False,
+    )
+
+    @field_validator('encryption_key')
+    @classmethod
     def validate_encryption_key(cls, v):
         """Validate encryption key is 32 bytes for AES-256, or generate a default for POC"""
         if not v:
@@ -53,18 +60,14 @@ class Settings(BaseSettings):
             raise ValueError('Encryption key must be exactly 32 characters for AES-256')
         return v
     
-    @validator('log_level')
+    @field_validator('log_level')
+    @classmethod
     def validate_log_level(cls, v):
         """Validate log level"""
         valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
         if v.upper() not in valid_levels:
             raise ValueError(f'Log level must be one of {valid_levels}')
         return v.upper()
-    
-    class Config:
-        env_file = '.env'
-        env_file_encoding = 'utf-8'
-        case_sensitive = False
 
 
 # Global settings instance

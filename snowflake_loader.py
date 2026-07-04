@@ -17,7 +17,8 @@ class SnowflakeLoader:
     Handles connection, schema creation, and data loading with HIPAA compliance
     """
     
-    def __init__(self):
+    def __init__(self, config: Optional[Dict[str, str]] = None):
+        self.config = config or {}
         self.connection = None
         self.cursor = None
         self.logger = logging.getLogger(__name__)
@@ -31,16 +32,18 @@ class SnowflakeLoader:
         }
     
     def connect(self):
-        """Establish connection to Snowflake"""
+        """Establish connection to Snowflake using the provided config or .env defaults"""
         try:
+            cfg = self.config
             self.connection = snowflake.connector.connect(
-                account=settings.snowflake_account,
-                user=settings.snowflake_user,
-                password=settings.snowflake_password,
-                warehouse=settings.snowflake_warehouse,
-                database=settings.snowflake_database,
-                schema=settings.snowflake_schema,
-                role=settings.snowflake_role
+                account=cfg.get('account') or settings.snowflake_account,
+                user=cfg.get('user') or settings.snowflake_user,
+                password=cfg.get('password') or settings.snowflake_password,
+                warehouse=(cfg.get('warehouse') or settings.snowflake_warehouse) or None,
+                database=(cfg.get('database') or settings.snowflake_database) or None,
+                schema=(cfg.get('schema') or settings.snowflake_schema) or None,
+                role=(cfg.get('role') or settings.snowflake_role) or None,
+                passcode=(cfg.get('passcode') or settings.snowflake_passcode) or None,
             )
             
             self.cursor = self.connection.cursor()
@@ -65,8 +68,10 @@ class SnowflakeLoader:
         """Close Snowflake connection"""
         if self.cursor:
             self.cursor.close()
+            self.cursor = None
         if self.connection:
             self.connection.close()
+            self.connection = None
         self.logger.info("Disconnected from Snowflake")
     
     def _create_table_if_not_exists(self, table_name: str, columns: Dict[str, str]):

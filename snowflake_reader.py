@@ -28,29 +28,42 @@ class SnowflakeReader:
         'opportunities': ['title', 'description'],
     }
 
-    def __init__(self):
+    def __init__(self, config: Optional[Dict[str, str]] = None):
+        self.config = config or {}
         self.connection = None
         self.cursor = None
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(getattr(logging, settings.log_level, logging.INFO))
 
     def connect(self):
-        """Establish connection to Snowflake"""
-        self.connection = snowflake.connector.connect(
-            account=settings.snowflake_account,
-            user=settings.snowflake_user,
-            password=settings.snowflake_password,
-            warehouse=settings.snowflake_warehouse,
-            database=settings.snowflake_database,
-            schema=settings.snowflake_schema,
-            role=settings.snowflake_role,
-        )
-        self.cursor = self.connection.cursor(snowflake.connector.DictCursor)
-        hipaa_manager.log_audit_event('snowflake_reader_connection', {
-            'database': settings.snowflake_database,
-            'schema': settings.snowflake_schema,
-            'timestamp': datetime.utcnow().isoformat(),
-        })
+        """Establish connection to Snowflake using the provided config or .env defaults"""
+        cfg = self.config
+        database = cfg.get('database') or settings.snowflake_database
+        schema = cfg.get('schema') or settings.snowflake_schema
+        try:
+            self.connection = snowflake.connector.connect(
+                account=cfg.get('account') or settings.snowflake_account,
+                user=cfg.get('user') or settings.snowflake_user,
+                password=cfg.get('password') or settings.snowflake_password,
+                warehouse=(cfg.get('warehouse') or settings.snowflake_warehouse) or None,
+                database=database or None,
+                schema=schema or None,
+                role=(cfg.get('role') or settings.snowflake_role) or None,
+                passcode=(cfg.get('passcode') or settings.snowflake_passcode) or None,
+            )
+            self.cursor = self.connection.cursor(snowflake.connector.DictCursor)
+            hipaa_manager.log_audit_event('snowflake_reader_connection', {
+                'database': database,
+                'schema': schema,
+                'timestamp': datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            self.logger.error(f"Failed to connect to Snowflake: {e}")
+            hipaa_manager.log_audit_event('snowflake_reader_connection_error', {
+                'error': str(e),
+                'timestamp': datetime.utcnow().isoformat(),
+            })
+            raise
 
     def disconnect(self):
         """Close Snowflake connection"""
@@ -132,4 +145,21 @@ class SnowflakeReader:
         })
 
         self.cursor.execute(stripped)
-        return self.cursor.fetchall()
+        rows = self.cursor.fetchall()
+
+        # Attempt to decrypt any PHI fields present in the result set
+        decrypted_rows = []
+        for row in rows:
+            decrypted = dict(row)
+            for entity_type, fields in self.PHI_FIELDS.items():
+                for field in fields:
+                    key = field if field in decrypted else field.upper()
+                    value = decrypted.get(key)
+                    if value:
+                        try:
+                            decrypted[key] = hipaa_manager.decrypt_data(str(value))
+                        except Exception:
+                            pass
+            decrypted_rows.append(decrypted)
+
+        return decrypted_rows

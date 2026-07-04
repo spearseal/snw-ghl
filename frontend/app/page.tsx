@@ -37,7 +37,7 @@ export default function Home() {
 
   const fetchHealth = useCallback(async () => {
     try {
-      const res = await fetch('/api/health');
+      const res = await apiFetch('/api/health');
       if (res.ok) setHealth(await res.json());
     } catch {
       setHealth(null);

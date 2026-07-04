@@ -5,6 +5,7 @@ with secrets encrypted via the HIPAA compliance manager, and supports
 live connection testing.
 """
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -19,12 +20,15 @@ from auth import get_current_user
 from config import settings
 from hipaa_compliance import hipaa_manager
 
+logger = logging.getLogger(__name__)
+
 DATA_DIR = os.environ.get(
     'DATA_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 )
 CONNECTIONS_FILE = os.path.join(DATA_DIR, 'connections.json')
 
 SECRET_FIELDS = {'password', 'api_key', 'passcode'}
+MASK_VALUE = '••••••••'
 
 router = APIRouter(prefix='/api/connections', tags=['connections'])
 
@@ -33,6 +37,11 @@ class ConnectionCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     type: Literal['snowflake', 'ghl']
     config: Dict[str, str]
+
+
+class ConnectionUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    config: Optional[Dict[str, str]] = None
 
 
 def _load_connections() -> List[Dict[str, Any]]:
@@ -68,6 +77,41 @@ def _decrypt_config(config: Dict[str, str]) -> Dict[str, str]:
     return out
 
 
+def _merge_config(existing_encrypted: Dict[str, str], new_config: Dict[str, str]) -> Dict[str, str]:
+    """Merge an update into an existing (encrypted) config.
+
+    For secret fields, a blank or masked value preserves the existing secret;
+    any other value is treated as a new secret and encrypted. Non-secret fields
+    are replaced as-is.
+    """
+    merged = dict(existing_encrypted)
+    for k, v in new_config.items():
+        if k in SECRET_FIELDS:
+            if v and v != MASK_VALUE:
+                merged[k] = hipaa_manager.encrypt_data(v)
+            # blank/masked -> keep existing encrypted value
+        else:
+            merged[k] = v
+    return merged
+
+
+def get_active_config(conn_type: str) -> Optional[Dict[str, str]]:
+    """Return the decrypted config for the best available connection of a type.
+
+    Preference order: a 'connected' connection, then a default (.env) one,
+    then the most recently created. Returns None if none exist.
+    """
+    conns = [c for c in _load_connections() if c.get('type') == conn_type]
+    if not conns:
+        return None
+    conns.sort(key=lambda c: (
+        0 if c.get('status') == 'connected' else 1,
+        0 if c.get('is_default') else 1,
+        c.get('created_at') or '',
+    ))
+    return _decrypt_config(conns[0]['config'])
+
+
 def _public_view(conn: Dict[str, Any]) -> Dict[str, Any]:
     """Return a connection with secret fields masked"""
     view = {k: v for k, v in conn.items() if k != 'config'}
@@ -85,21 +129,27 @@ def _seed_defaults():
     changed = False
 
     if 'snowflake' not in existing_types and settings.snowflake_account:
+        sf_config = {
+            'account': settings.snowflake_account,
+            'user': settings.snowflake_user,
+            'password': settings.snowflake_password,
+            'warehouse': settings.snowflake_warehouse,
+            'database': settings.snowflake_database,
+            'schema': settings.snowflake_schema,
+            'role': settings.snowflake_role or '',
+            'passcode': settings.snowflake_passcode or '',
+        }
+        if not sf_config['passcode'].strip():
+            logger.warning(
+                'Snowflake passcode (MFA) not found in .env — '
+                'default connection will fail until a passcode is provided.'
+            )
         connections.append({
             'id': str(uuid.uuid4()),
             'name': 'Default Snowflake (.env)',
             'type': 'snowflake',
             'is_default': True,
-            'config': _encrypt_config({
-                'account': settings.snowflake_account,
-                'user': settings.snowflake_user,
-                'password': settings.snowflake_password,
-                'warehouse': settings.snowflake_warehouse,
-                'database': settings.snowflake_database,
-                'schema': settings.snowflake_schema,
-                'role': settings.snowflake_role or '',
-                'passcode': settings.snowflake_passcode or '',
-            }),
+            'config': _encrypt_config(sf_config),
             'created_by': 'system',
             'created_at': datetime.now(timezone.utc).isoformat(),
             'last_tested': None,
@@ -206,6 +256,43 @@ def create_connection(req: ConnectionCreate, user: str = Depends(get_current_use
         'type': req.type,
         'user': hipaa_manager.mask_sensitive_data(user),
         'timestamp': conn['created_at'],
+    })
+
+    return _public_view(conn)
+
+
+@router.put('/{connection_id}')
+def update_connection(connection_id: str, req: ConnectionUpdate, user: str = Depends(get_current_user)):
+    """Update a connection's name and/or config.
+
+    Secret fields left blank or masked keep their existing stored value.
+    Changing the config resets the connection status to 'untested'.
+    """
+    connections = _load_connections()
+    conn = next((c for c in connections if c['id'] == connection_id), None)
+    if not conn:
+        raise HTTPException(status_code=404, detail='Connection not found')
+
+    if req.name is not None:
+        new_name = req.name.strip()
+        if any(c['id'] != connection_id and c['name'].lower() == new_name.lower() for c in connections):
+            raise HTTPException(status_code=409, detail='A connection with this name already exists')
+        conn['name'] = new_name
+
+    if req.config is not None:
+        merged = _merge_config(conn['config'], req.config)
+        if conn['type'] == 'snowflake' and not (_decrypt_config(merged).get('passcode') or '').strip():
+            raise HTTPException(status_code=422, detail='A passcode (MFA) is required for Snowflake connections')
+        conn['config'] = merged
+        conn['status'] = 'untested'
+        conn['last_tested'] = None
+
+    _save_connections(connections)
+
+    hipaa_manager.log_audit_event('connection_updated', {
+        'connection_id': connection_id,
+        'user': hipaa_manager.mask_sensitive_data(user),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
     })
 
     return _public_view(conn)

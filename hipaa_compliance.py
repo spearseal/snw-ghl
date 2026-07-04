@@ -48,9 +48,13 @@ class HIPAAComplianceManager:
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir)
         
-        # Configure audit logger
+        # Configure audit logger (prevent duplicate handlers on re-instantiation)
         self.audit_logger = logging.getLogger('hipaa_audit')
         self.audit_logger.setLevel(logging.INFO)
+        self.audit_logger.propagate = False
+
+        # Clear any existing handlers to prevent duplicates
+        self.audit_logger.handlers.clear()
         
         # File handler for audit logs
         file_handler = logging.FileHandler(settings.audit_log_path)

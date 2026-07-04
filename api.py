@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from auth import get_current_user
 from auth import router as auth_router
 from config import settings
+from connections import get_active_config, _seed_defaults
 from connections import router as connections_router
 from ghl_client import GHLClient
 from hipaa_compliance import hipaa_manager
@@ -39,17 +40,13 @@ app = FastAPI(
 )
 
 
-# Use Railway's public domain if available, otherwise localhost for dev
-railway_domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN')
-if railway_domain:
-    FRONTEND_ORIGIN = f'https://{railway_domain}'
-else:
-  FRONTEND_ORIGIN = os.environ.get('FRONTEND_ORIGIN', '*')
-
+# Determine allowed CORS origin from environment.
+# GCP deployments set FRONTEND_ORIGIN; fall back to localhost for dev.
+FRONTEND_ORIGIN = os.environ.get('FRONTEND_ORIGIN', 'http://localhost:3000')
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],  # Railway handles origin validation
+    allow_origins=[FRONTEND_ORIGIN],
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],
@@ -86,19 +83,20 @@ def health():
 @app.post('/api/index/refresh')
 def refresh_index(req: RefreshRequest, user: str = Depends(get_current_user)):
     """Fetch data from GHL and/or Snowflake and rebuild the query index"""
+    _seed_defaults()
     datasets = {}
     errors = {}
 
     if req.include_ghl:
         try:
-            ghl = GHLClient()
+            ghl = GHLClient(get_active_config('ghl'))
             datasets['ghl'] = ghl.get_all_data()
         except Exception as e:
             logger.error(f"GHL fetch failed: {e}")
             errors['ghl'] = str(e)
 
     if req.include_snowflake:
-        reader = SnowflakeReader()
+        reader = SnowflakeReader(get_active_config('snowflake'))
         try:
             reader.connect()
             datasets['snowflake'] = reader.fetch_all(req.limit_per_entity)
@@ -151,8 +149,9 @@ def query(req: QueryRequest, user: str = Depends(get_current_user)):
 def sync(user: str = Depends(get_current_user)):
     """Run the full GHL -> Snowflake sync pipeline"""
     try:
-        ghl = GHLClient()
-        loader = SnowflakeLoader()
+        _seed_defaults()
+        ghl = GHLClient(get_active_config('ghl'))
+        loader = SnowflakeLoader(get_active_config('snowflake'))
         loader.connect()
         try:
             data = ghl.get_all_data()

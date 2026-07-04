@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Database,
   Loader2,
+  Pencil,
   Plug,
   Plus,
   Snowflake,
@@ -51,10 +52,34 @@ export default function ConnectorsPage() {
   const [testResults, setTestResults] = useState<Record<string, string>>({});
 
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<'snowflake' | 'ghl'>('snowflake');
   const [newConfig, setNewConfig] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setNewName('');
+    setNewType('snowflake');
+    setNewConfig({});
+  };
+
+  const startEdit = (c: Connection) => {
+    setEditingId(c.id);
+    setNewName(c.name);
+    setNewType(c.type);
+    // Prefill non-secret fields; leave secrets blank (blank = keep existing)
+    const cfg: Record<string, string> = {};
+    Object.entries(c.config).forEach(([k, v]) => {
+      const isSecret = ['password', 'api_key', 'passcode'].includes(k);
+      cfg[k] = isSecret ? '' : v;
+    });
+    setNewConfig(cfg);
+    setShowForm(true);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const loadConnections = useCallback(async () => {
     setLoading(true);
@@ -94,6 +119,20 @@ export default function ConnectorsPage() {
             : c
         )
       );
+      if (data.status === 'connected') {
+        try {
+          await apiFetch('/api/index/refresh', {
+            method: 'POST',
+            body: JSON.stringify({
+              include_ghl: true,
+              include_snowflake: true,
+              limit_per_entity: 500,
+            }),
+          });
+        } catch {
+          // Index refresh is best-effort; don't fail the test
+        }
+      }
     } catch {
       setTestResults((prev) => ({ ...prev, [id]: 'Test request failed' }));
     } finally {
@@ -109,33 +148,52 @@ export default function ConnectorsPage() {
     }
   };
 
-  const createConnection = async (e: React.FormEvent) => {
+  const saveConnection = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      const res = await apiFetch('/api/connections', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: newName,
-          type: newType,
-          config: newConfig,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          typeof data.detail === 'string'
-            ? data.detail
-            : 'Failed to create connection'
+      if (editingId) {
+        const res = await apiFetch(`/api/connections/${editingId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name: newName,
+            config: newConfig,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(
+            typeof data.detail === 'string'
+              ? data.detail
+              : 'Failed to update connection'
+          );
+        }
+        setConnections((prev) =>
+          prev.map((c) => (c.id === editingId ? data : c))
         );
+      } else {
+        const res = await apiFetch('/api/connections', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: newName,
+            type: newType,
+            config: newConfig,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(
+            typeof data.detail === 'string'
+              ? data.detail
+              : 'Failed to create connection'
+          );
+        }
+        setConnections((prev) => [...prev, data]);
       }
-      setConnections((prev) => [...prev, data]);
-      setShowForm(false);
-      setNewName('');
-      setNewConfig({});
+      resetForm();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create connection');
+      setError(e instanceof Error ? e.message : 'Failed to save connection');
     } finally {
       setSaving(false);
     }
@@ -195,10 +253,12 @@ export default function ConnectorsPage() {
       {/* New connection form */}
       {showForm && (
         <form
-          onSubmit={createConnection}
+          onSubmit={saveConnection}
           className="mb-6 rounded-2xl border border-indigo-800/50 bg-slate-900/60 p-6"
         >
-          <h2 className="mb-4 font-medium">Create New Connection</h2>
+          <h2 className="mb-4 font-medium">
+            {editingId ? 'Edit Connection' : 'Create New Connection'}
+          </h2>
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm text-slate-400">
@@ -257,14 +317,16 @@ export default function ConnectorsPage() {
             >
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
+              ) : editingId ? (
+                <Pencil className="h-4 w-4" />
               ) : (
                 <Plus className="h-4 w-4" />
               )}
-              Save Connection
+              {editingId ? 'Update Connection' : 'Save Connection'}
             </button>
             <button
               type="button"
-              onClick={() => setShowForm(false)}
+              onClick={resetForm}
               className="rounded-lg px-4 py-2 text-sm text-slate-400 transition hover:bg-slate-800"
             >
               Cancel
@@ -323,6 +385,13 @@ export default function ConnectorsPage() {
                       <Plug className="h-4 w-4" />
                     )}
                     Connect
+                  </button>
+                  <button
+                    onClick={() => startEdit(c)}
+                    title="Edit connection"
+                    className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-800 hover:text-slate-200"
+                  >
+                    <Pencil className="h-4 w-4" />
                   </button>
                   {!c.is_default && (
                     <button

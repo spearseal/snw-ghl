@@ -16,10 +16,11 @@ class GHLClient:
     Supports OAuth 2.0 and Private Integration Token authentication
     """
     
-    def __init__(self):
-        self.api_key = settings.ghl_api_key
-        self.base_url = settings.ghl_api_base_url
-        self.location_id = settings.ghl_location_id
+    def __init__(self, config: Optional[Dict[str, str]] = None):
+        config = config or {}
+        self.api_key = config.get('api_key') or settings.ghl_api_key
+        self.base_url = config.get('base_url') or settings.ghl_api_base_url
+        self.location_id = config.get('location_id') or settings.ghl_location_id
         self.session = requests.Session()
         self.session.headers.update({
             'Authorization': f'Bearer {self.api_key}',
