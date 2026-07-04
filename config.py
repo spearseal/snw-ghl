@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     """Application settings with validation"""
     
     # GoHighLevel Configuration
-    ghl_api_key: str = Field(..., env="GHL_API_KEY")
+    ghl_api_key: str = Field(default="", env="GHL_API_KEY")
     ghl_api_base_url: str = Field(
         default="https://services.leadconnectorhq.com",
         env="GHL_API_BASE_URL"
@@ -24,16 +24,16 @@ class Settings(BaseSettings):
     ghl_location_id: Optional[str] = Field(None, env="GHL_LOCATION_ID")
     
     # Snowflake Configuration
-    snowflake_account: str = Field(..., env="SNOWFLAKE_ACCOUNT")
-    snowflake_user: str = Field(..., env="SNOWFLAKE_USER")
-    snowflake_password: str = Field(..., env="SNOWFLAKE_PASSWORD")
-    snowflake_warehouse: str = Field(..., env="SNOWFLAKE_WAREHOUSE")
-    snowflake_database: str = Field(..., env="SNOWFLAKE_DATABASE")
+    snowflake_account: str = Field(default="", env="SNOWFLAKE_ACCOUNT")
+    snowflake_user: str = Field(default="", env="SNOWFLAKE_USER")
+    snowflake_password: str = Field(default="", env="SNOWFLAKE_PASSWORD")
+    snowflake_warehouse: str = Field(default="", env="SNOWFLAKE_WAREHOUSE")
+    snowflake_database: str = Field(default="", env="SNOWFLAKE_DATABASE")
     snowflake_schema: str = Field(default="PUBLIC", env="SNOWFLAKE_SCHEMA")
     snowflake_role: Optional[str] = Field(None, env="SNOWFLAKE_ROLE")
     
     # Security Configuration
-    encryption_key: str = Field(..., env="ENCRYPTION_KEY")
+    encryption_key: str = Field(default="", env="ENCRYPTION_KEY")
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
     audit_log_enabled: bool = Field(default=True, env="AUDIT_LOG_ENABLED")
     audit_log_path: str = Field(default="./logs/audit.log", env="AUDIT_LOG_PATH")
@@ -45,7 +45,9 @@ class Settings(BaseSettings):
     
     @validator('encryption_key')
     def validate_encryption_key(cls, v):
-        """Validate encryption key is 32 bytes for AES-256"""
+        """Validate encryption key is 32 bytes for AES-256, or generate a default for POC"""
+        if not v:
+            return 'ghl_snowflake_poc_key_2024_!!!!!'[:32]
         if len(v) != 32:
             raise ValueError('Encryption key must be exactly 32 characters for AES-256')
         return v

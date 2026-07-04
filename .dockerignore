@@ -1,23 +1,20 @@
-# Python
+.git
+venv/
+.venv/
 __pycache__/
 *.py[cod]
-*.pyo
-.venv/
-venv/
+*.pyc
 *.egg-info/
-
-# Node / Next.js
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-
-# Dev / tooling
-.git/
-.gitignore
-*.md
+data/
+logs/
 .env
 .env.*
 !.env.example
-
-# Tests
+*.log
+*.key
+*.pem
+.DS_Store
+frontend/node_modules/
+frontend/.next/
+frontend/out/
 test.txt

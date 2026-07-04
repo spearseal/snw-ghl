@@ -24,7 +24,7 @@ DATA_DIR = os.environ.get(
 )
 CONNECTIONS_FILE = os.path.join(DATA_DIR, 'connections.json')
 
-SECRET_FIELDS = {'password', 'api_key'}
+SECRET_FIELDS = {'password', 'api_key', 'passcode'}
 
 router = APIRouter(prefix='/api/connections', tags=['connections'])
 
@@ -137,6 +137,7 @@ def _test_snowflake(config: Dict[str, str]) -> Dict[str, Any]:
         database=config.get('database') or None,
         schema=config.get('schema') or None,
         role=config.get('role') or None,
+        passcode=config.get('passcode') or None,
         login_timeout=15,
     )
     try:
