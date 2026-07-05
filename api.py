@@ -31,6 +31,7 @@ from connections import router as connections_router
 from ghl_client import GHLClient
 from hipaa_compliance import hipaa_manager
 from query_engine import QueryEngine, detect_query_sources
+from snowflake_agent import SnowflakeAgent
 from snowflake_loader import SnowflakeLoader
 from snowflake_reader import SnowflakeReader
 
@@ -78,6 +79,32 @@ class RefreshRequest(BaseModel):
     include_snowflake: Optional[bool] = None
     limit_per_entity: int = Field(default=500, ge=1, le=5000)
     snowflake_passcode: Optional[str] = Field(default=None, max_length=10)
+
+
+class AgentQueryRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    limit: int = Field(default=100, ge=1, le=1000)
+    mask_phi: bool = True
+    snowflake_passcode: Optional[str] = Field(default=None, max_length=10)
+
+
+def _snowflake_reader_from_active(passcode: Optional[str] = None) -> SnowflakeReader:
+    if not datasource_connected('snowflake'):
+        raise HTTPException(
+            status_code=422,
+            detail='Snowflake is not connected. Test the connection in DB Connectors first.',
+        )
+    sf_config = dict(get_active_config('snowflake') or {})
+    if snowflake_requires_passcode(sf_config) and not (passcode or '').strip():
+        raise HTTPException(
+            status_code=422,
+            detail='Enter a fresh Snowflake MFA code or use key-pair authentication.',
+        )
+    if passcode:
+        sf_config['passcode'] = passcode.strip()
+    reader = SnowflakeReader(sf_config)
+    reader.connect(passcode=passcode)
+    return reader
 
 
 def _fetch_datasets(
@@ -311,6 +338,50 @@ def query(req: QueryRequest, user: str = Depends(get_current_user)):
             'timestamp': datetime.utcnow().isoformat(),
         })
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get('/api/snowflake/schema')
+def snowflake_schema(
+    snowflake_passcode: Optional[str] = None,
+    user: str = Depends(get_current_user),
+):
+    """Discover all tables and columns in the connected Snowflake database/schema."""
+    _seed_defaults()
+    reader = _snowflake_reader_from_active(snowflake_passcode)
+    try:
+        agent = SnowflakeAgent(reader)
+        schema = agent.analyze_schema(refresh=True)
+        return schema
+    finally:
+        reader.disconnect()
+
+
+@app.post('/api/agent/query')
+def agent_query(req: AgentQueryRequest, user: str = Depends(get_current_user)):
+    """
+    Schema-aware agent: analyzes all tables in the configured database/schema,
+    generates read-only SQL from your question, and returns live data.
+    """
+    _seed_defaults()
+    reader = _snowflake_reader_from_active(req.snowflake_passcode)
+    try:
+        agent = SnowflakeAgent(reader)
+        return agent.query(
+            req.question,
+            limit=req.limit,
+            mask_phi=req.mask_phi,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Agent query failed: {e}")
+        hipaa_manager.log_audit_event('agent_query_failed', {
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat(),
+        })
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        reader.disconnect()
 
 
 @app.post('/api/sync')

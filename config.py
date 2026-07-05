@@ -37,6 +37,12 @@ class Settings(BaseSettings):
         default="", env="SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"
     )
     snowflake_custom_tables: str = Field(default="", env="SNOWFLAKE_CUSTOM_TABLES")
+
+    # Optional LLM for Snowflake agent (text -> SQL). Falls back to heuristics if unset.
+    groq_api_key: str = Field(default="", env="GROQ_API_KEY")
+    groq_model: str = Field(default="llama-3.3-70b-versatile", env="GROQ_MODEL")
+    openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o-mini", env="OPENAI_MODEL")
     
     # Security Configuration
     encryption_key: str = Field(default="", env="ENCRYPTION_KEY")

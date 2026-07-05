@@ -35,6 +35,8 @@ class SnowflakeReader:
         'firstname', 'lastname', 'body', 'description',
     ]
 
+    _IDENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_$]*$')
+
     def __init__(self, config: Optional[Dict[str, str]] = None):
         self.config = config or {}
         self.connection = None
@@ -55,6 +57,23 @@ class SnowflakeReader:
         if custom:
             return {table: table for table in custom}
         return dict(self.GHL_TABLES)
+
+    def _safe_ident(self, name: str) -> str:
+        """Validate and return an unquoted Snowflake identifier (folds to uppercase)."""
+        if not self._IDENT.match(name):
+            raise ValueError(f'Invalid SQL identifier: {name}')
+        return name
+
+    def _qualified_table(self, table_name: str) -> str:
+        """Build DATABASE.SCHEMA.TABLE using Snowflake's default uppercase rules."""
+        table = self._safe_ident(table_name)
+        database = (self.config.get('database') or settings.snowflake_database or '').strip()
+        schema = (self.config.get('schema') or settings.snowflake_schema or '').strip()
+        if database and schema:
+            return f'{self._safe_ident(database)}.{self._safe_ident(schema)}.{table}'
+        if schema:
+            return f'{self._safe_ident(schema)}.{table}'
+        return table
 
     def connect(self, passcode: Optional[str] = None):
         """Establish connection to Snowflake using the provided config or .env defaults"""
@@ -108,18 +127,21 @@ class SnowflakeReader:
 
     def fetch_table(self, table_name: str, limit: int = 500) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Fetch rows from a Snowflake table by name."""
-        if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_$]*', table_name):
-            return [], f'Invalid table name: {table_name}'
+        try:
+            qualified = self._qualified_table(table_name)
+        except ValueError as e:
+            return [], str(e)
 
         try:
-            self.cursor.execute(f'SELECT * FROM "{table_name}" LIMIT %s', (limit,))
+            # Unquoted identifiers — Snowflake resolves ghl_contacts -> GHL_CONTACTS
+            self.cursor.execute(f'SELECT * FROM {qualified} LIMIT %s', (limit,))
             rows = self.cursor.fetchall()
         except Exception as e:
-            self.logger.warning(f"Could not read {table_name}: {e}")
-            return [], f'{table_name}: {e}'
+            self.logger.warning(f"Could not read {qualified}: {e}")
+            return [], f'{qualified}: {e}'
 
         hipaa_manager.log_audit_event('snowflake_data_read', {
-            'table': table_name,
+            'table': qualified,
             'rows': len(rows),
             'timestamp': datetime.utcnow().isoformat(),
         })

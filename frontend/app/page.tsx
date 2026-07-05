@@ -23,6 +23,32 @@ interface QueryResponse {
   load_errors?: Record<string, string>;
 }
 
+interface AgentResponse {
+  answer: string;
+  sql: string | null;
+  reasoning: string;
+  method?: string;
+  row_count: number;
+  rows: Record<string, unknown>[];
+  schema_summary?: {
+    database: string;
+    schema: string;
+    table_count: number;
+    tables: string[];
+  };
+}
+
+interface SchemaResponse {
+  database: string;
+  schema: string;
+  table_count: number;
+  tables: Array<{
+    name: string;
+    row_count?: number;
+    columns: Array<{ name: string; type: string }>;
+  }>;
+}
+
 interface HealthResponse {
   status: string;
   indexed_chunks: number;
@@ -79,6 +105,9 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<QueryResponse | null>(null);
+  const [agentResponse, setAgentResponse] = useState<AgentResponse | null>(null);
+  const [schemaInfo, setSchemaInfo] = useState<SchemaResponse | null>(null);
+  const [queryMode, setQueryMode] = useState<'agent' | 'memory'>('agent');
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [snowflakePasscode, setSnowflakePasscode] = useState('');
@@ -158,6 +187,45 @@ export default function Home() {
     e.preventDefault();
     if (!question.trim()) return;
 
+    if (queryMode === 'agent') {
+      if (!snowflakeConnected) {
+        setError('Snowflake Agent requires a connected Snowflake datasource.');
+        return;
+      }
+      if (snowflakeNeedsMfa && !snowflakePasscode.trim()) {
+        setError('Enter your current Snowflake MFA code for password-based auth.');
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      setResponse(null);
+      setAgentResponse(null);
+      try {
+        const res = await apiFetch('/api/agent/query', {
+          method: 'POST',
+          body: JSON.stringify({
+            question,
+            limit: 100,
+            mask_phi: maskPhi,
+            snowflake_passcode: snowflakePasscode.trim() || undefined,
+          }),
+        }, 120_000);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(
+            typeof data.detail === 'string' ? data.detail : 'Agent query failed'
+          );
+        }
+        setAgentResponse(data);
+        setSnowflakePasscode('');
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Agent query failed');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!snowflakeConnected && !ghlConnected) {
       setError(
         'No data sources connected. Go to DB Connectors and test your Snowflake and/or GoHighLevel connection first.'
@@ -175,6 +243,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setResponse(null);
+    setAgentResponse(null);
     try {
       const res = await apiFetch('/api/query', {
         method: 'POST',
@@ -203,6 +272,33 @@ export default function Home() {
     }
   };
 
+  const loadSchema = async () => {
+    if (!snowflakeConnected) {
+      setError('Connect Snowflake first to analyze schema.');
+      return;
+    }
+    if (snowflakeNeedsMfa && !snowflakePasscode.trim()) {
+      setError('Enter MFA code to analyze schema.');
+      return;
+    }
+    setError(null);
+    try {
+      const params = snowflakePasscode.trim()
+        ? `?snowflake_passcode=${encodeURIComponent(snowflakePasscode.trim())}`
+        : '';
+      const res = await apiFetch(`/api/snowflake/schema${params}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          typeof data.detail === 'string' ? data.detail : 'Schema discovery failed'
+        );
+      }
+      setSchemaInfo(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Schema discovery failed');
+    }
+  };
+
   const connectedList: string[] = [];
   if (snowflakeConnected) connectedList.push('Snowflake');
   if (ghlConnected) connectedList.push('GoHighLevel');
@@ -212,9 +308,42 @@ export default function Home() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold">Query Console</h1>
         <p className="text-sm text-slate-400">
-          Ask natural-language questions. Data is loaded from each connected source
-          into memory, then searched independently.
+          Snowflake Agent discovers all tables in your database/schema and answers
+          with live SQL. Memory search uses pre-loaded chunks (GHL + Snowflake).
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setQueryMode('agent')}
+            className={`rounded-lg px-3 py-1.5 text-sm ${
+              queryMode === 'agent'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-800 text-slate-300'
+            }`}
+          >
+            Snowflake Agent
+          </button>
+          <button
+            type="button"
+            onClick={() => setQueryMode('memory')}
+            className={`rounded-lg px-3 py-1.5 text-sm ${
+              queryMode === 'memory'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-800 text-slate-300'
+            }`}
+          >
+            Memory Search
+          </button>
+          {snowflakeConnected && queryMode === 'agent' && (
+            <button
+              type="button"
+              onClick={loadSchema}
+              className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700"
+            >
+              Analyze Schema
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Connected sources + memory status */}
@@ -310,7 +439,11 @@ export default function Home() {
               type="text"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="e.g. Show contacts from Snowflake with open opportunities"
+              placeholder={
+                queryMode === 'agent'
+                  ? 'e.g. give me total customers from ghl_contacts'
+                  : 'e.g. Which contacts have open opportunities?'
+              }
               className="w-full rounded-xl border border-slate-700 bg-slate-900 py-3 pl-11 pr-4 text-slate-100 placeholder-slate-500 outline-none transition focus:border-indigo-500"
             />
           </div>
@@ -343,6 +476,73 @@ export default function Home() {
         {error && (
           <div className="mb-4 whitespace-pre-wrap rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
             {error}
+          </div>
+        )}
+
+        {schemaInfo && queryMode === 'agent' && (
+          <div className="mb-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
+            <p className="mb-2 font-medium text-slate-200">
+              Schema {schemaInfo.database}.{schemaInfo.schema} — {schemaInfo.table_count}{' '}
+              table(s)
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {schemaInfo.tables.map((t) => (
+                <span
+                  key={t.name}
+                  className="rounded-full bg-slate-800 px-2.5 py-1 font-mono text-xs text-slate-400"
+                >
+                  {t.name}
+                  {t.row_count != null ? ` (${t.row_count})` : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {agentResponse && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-sky-800/50 bg-sky-950/30 px-4 py-3">
+              <p className="text-sm font-medium text-sky-200">{agentResponse.answer}</p>
+              <p className="mt-1 text-xs text-sky-300/70">{agentResponse.reasoning}</p>
+              {agentResponse.schema_summary && (
+                <p className="mt-1 text-xs text-sky-300/70">
+                  Analyzed {agentResponse.schema_summary.table_count} tables in{' '}
+                  {agentResponse.schema_summary.database}.
+                  {agentResponse.schema_summary.schema}
+                </p>
+              )}
+            </div>
+            {agentResponse.sql && (
+              <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-emerald-300">
+                {agentResponse.sql}
+              </pre>
+            )}
+            {agentResponse.rows.length > 0 && (
+              <div className="overflow-x-auto rounded-xl border border-slate-800">
+                <table className="min-w-full text-left text-sm text-slate-300">
+                  <thead className="bg-slate-900 text-xs uppercase text-slate-500">
+                    <tr>
+                      {Object.keys(agentResponse.rows[0]).map((col) => (
+                        <th key={col} className="px-4 py-2">
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {agentResponse.rows.map((row, i) => (
+                      <tr key={i} className="border-t border-slate-800">
+                        {Object.keys(agentResponse.rows[0]).map((col) => (
+                          <td key={col} className="px-4 py-2 font-mono text-xs">
+                            {String(row[col] ?? '')}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -404,10 +604,11 @@ export default function Home() {
           </div>
         )}
 
-        {!response && !error && (
+        {!response && !agentResponse && !error && (
           <div className="rounded-xl border border-dashed border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
-            Connect Snowflake and/or GoHighLevel, enter MFA if needed, then ask a
-            question. Data loads automatically from each connected source.
+            {queryMode === 'agent'
+              ? 'Use Snowflake Agent to analyze all tables in your database/schema and query with natural language.'
+              : 'Connect sources, refresh memory, then search indexed chunks.'}
           </div>
         )}
       </section>
