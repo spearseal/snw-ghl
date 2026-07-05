@@ -4,17 +4,19 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   BarChart3,
+  ClipboardList,
   Database,
   LogOut,
-  Search,
+  Sparkles,
   ShieldCheck,
   Snowflake,
 } from 'lucide-react';
 import { clearSession, getEmail } from '@/lib/api';
 
 const NAV = [
+  { href: '/ceo-tasks', label: 'CEO Top 5 Tasks', icon: ClipboardList },
   { href: '/', label: 'Marketing Insights', icon: BarChart3 },
-  { href: '/query', label: 'Query Console', icon: Search },
+  { href: '/query', label: 'Jeans AI', icon: Sparkles },
 ];
 
 export default function Sidebar() {

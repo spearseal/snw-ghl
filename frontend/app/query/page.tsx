@@ -331,11 +331,14 @@ export default function Home() {
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold">Query Console</h1>
-        <p className="text-sm text-slate-400">
-          Smart Query checks every connected datasource, refreshes memory, and labels
-          results by source (Snowflake live SQL + GoHighLevel memory). Memory Search
-          searches pre-loaded chunks only.
+        <div className="mb-1 flex items-center gap-2 text-fuchsia-400">
+          <span className="text-lg">👖</span>
+          <span className="text-xs font-medium uppercase tracking-wider">Denim-powered AI</span>
+        </div>
+        <h1 className="text-2xl font-bold text-slate-50">Jeans AI</h1>
+        <p className="mt-1 text-sm text-slate-400">
+          Your stretch-fit data assistant — queries Snowflake &amp; GHL without ripping at the seams.
+          Smart mode goes live; Memory Search digs through pre-loaded chunks.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
@@ -347,7 +350,7 @@ export default function Home() {
                 : 'bg-slate-800 text-slate-300'
             }`}
           >
-            Smart Query
+            Smart Jeans
           </button>
           <button
             type="button"
@@ -467,7 +470,7 @@ export default function Home() {
               onChange={(e) => setQuestion(e.target.value)}
               placeholder={
                 queryMode === 'smart'
-                  ? 'e.g. show contacts and total customers from connected sources'
+                  ? 'e.g. Jeans, how many patients slipped through the cracks?'
                   : 'e.g. Which contacts have open opportunities?'
               }
               className="w-full rounded-xl border border-slate-700 bg-slate-900 py-3 pl-11 pr-4 text-slate-100 placeholder-slate-500 outline-none transition focus:border-indigo-500"
@@ -748,7 +751,7 @@ export default function Home() {
         {!response && !agentResponse && !smartResponse && !error && (
           <div className="rounded-xl border border-dashed border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
             {queryMode === 'smart'
-              ? 'Connect Snowflake and/or GoHighLevel, refresh memory, then ask a question across all connected sources.'
+              ? 'Connect your sources, hit Refresh Memory, then ask Jeans anything — it fits every datasource.'
               : 'Connect sources, refresh memory, then search indexed chunks.'}
           </div>
         )}
