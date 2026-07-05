@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from auth import get_current_user
 from auth import router as auth_router
 from config import settings
-from connections import get_active_config, _seed_defaults
+from connections import datasource_configured, get_active_config, _seed_defaults
 from connections import router as connections_router
 from ghl_client import GHLClient
 from hipaa_compliance import hipaa_manager
@@ -86,33 +86,49 @@ def refresh_index(req: RefreshRequest, user: str = Depends(get_current_user)):
     _seed_defaults()
     datasets = {}
     errors = {}
+    skipped = {}
 
     if req.include_ghl:
-        try:
-            ghl = GHLClient(get_active_config('ghl'))
-            datasets['ghl'] = ghl.get_all_data()
-        except Exception as e:
-            logger.error(f"GHL fetch failed: {e}")
-            errors['ghl'] = str(e)
+        if not datasource_configured('ghl'):
+            skipped['ghl'] = 'No GoHighLevel connection configured'
+        else:
+            try:
+                ghl = GHLClient(get_active_config('ghl'))
+                datasets['ghl'] = ghl.get_all_data()
+            except Exception as e:
+                logger.error(f"GHL fetch failed: {e}")
+                errors['ghl'] = str(e)
 
     if req.include_snowflake:
-        reader = SnowflakeReader(get_active_config('snowflake'))
-        try:
-            reader.connect()
-            datasets['snowflake'] = reader.fetch_all(req.limit_per_entity)
-        except Exception as e:
-            logger.error(f"Snowflake fetch failed: {e}")
-            errors['snowflake'] = str(e)
-        finally:
+        if not datasource_configured('snowflake'):
+            skipped['snowflake'] = 'No Snowflake connection configured'
+        else:
+            reader = SnowflakeReader(get_active_config('snowflake'))
             try:
-                reader.disconnect()
-            except Exception:
-                pass
+                reader.connect()
+                datasets['snowflake'] = reader.fetch_all(req.limit_per_entity)
+            except Exception as e:
+                logger.error(f"Snowflake fetch failed: {e}")
+                errors['snowflake'] = str(e)
+            finally:
+                try:
+                    reader.disconnect()
+                except Exception:
+                    pass
 
     if not datasets:
         raise HTTPException(
             status_code=502,
-            detail={'message': 'No data sources available', 'errors': errors},
+            detail={
+                'message': 'No data sources available',
+                'errors': errors,
+                'skipped': skipped,
+                'hint': (
+                    'Ensure Snowflake env vars (including SNOWFLAKE_PASSCODE for MFA) '
+                    'are set in GCP, or mount persistent storage at DATA_DIR so '
+                    'connector credentials survive restarts.'
+                ),
+            },
         )
 
     engine.index_data(datasets)
@@ -128,6 +144,7 @@ def refresh_index(req: RefreshRequest, user: str = Depends(get_current_user)):
         'last_indexed': engine.last_indexed,
         'record_counts': counts,
         'errors': errors,
+        'skipped': skipped,
     }
 
 

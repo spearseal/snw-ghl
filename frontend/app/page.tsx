@@ -25,6 +25,32 @@ interface HealthResponse {
   last_indexed: string | null;
 }
 
+interface Connection {
+  id: string;
+  type: 'snowflake' | 'ghl';
+  status: string;
+}
+
+function formatRefreshError(data: {
+  detail?: string | { message?: string; errors?: Record<string, string>; skipped?: Record<string, string>; hint?: string };
+}): string {
+  const detail = data.detail;
+  if (typeof detail === 'string') return detail;
+  const parts: string[] = [detail?.message || 'Index refresh failed'];
+  if (detail?.errors) {
+    for (const [source, msg] of Object.entries(detail.errors)) {
+      parts.push(`${source}: ${msg}`);
+    }
+  }
+  if (detail?.skipped) {
+    for (const [source, msg] of Object.entries(detail.skipped)) {
+      parts.push(`${source} (skipped): ${msg}`);
+    }
+  }
+  if (detail?.hint) parts.push(detail.hint);
+  return parts.join('\n');
+}
+
 export default function Home() {
   const router = useRouter();
   const [question, setQuestion] = useState('');
@@ -34,6 +60,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<QueryResponse | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [connections, setConnections] = useState<Connection[]>([]);
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -44,33 +71,41 @@ export default function Home() {
     }
   }, []);
 
+  const fetchConnections = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/connections');
+      if (res.ok) setConnections(await res.json());
+    } catch {
+      setConnections([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (!getToken()) {
       router.push('/login');
       return;
     }
     fetchHealth();
-  }, [router, fetchHealth]);
+    fetchConnections();
+  }, [router, fetchHealth, fetchConnections]);
 
   const refreshIndex = async () => {
     setRefreshing(true);
     setError(null);
     try {
+      const hasGhl = connections.some((c) => c.type === 'ghl');
+      const hasSnowflake = connections.some((c) => c.type === 'snowflake');
       const res = await apiFetch('/api/index/refresh', {
         method: 'POST',
         body: JSON.stringify({
-          include_ghl: true,
-          include_snowflake: true,
+          include_ghl: hasGhl,
+          include_snowflake: hasSnowflake || connections.length === 0,
           limit_per_entity: 500,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(
-          typeof data.detail === 'string'
-            ? data.detail
-            : data.detail?.message || 'Index refresh failed'
-        );
+        throw new Error(formatRefreshError(data));
       }
       await fetchHealth();
     } catch (e) {
@@ -188,7 +223,7 @@ export default function Home() {
       {/* Output section */}
       <section aria-label="Output">
         {error && (
-          <div className="mb-4 rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+          <div className="mb-4 whitespace-pre-wrap rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
             {error}
           </div>
         )}

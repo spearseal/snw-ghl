@@ -112,6 +112,21 @@ def get_active_config(conn_type: str) -> Optional[Dict[str, str]]:
     return _decrypt_config(conns[0]['config'])
 
 
+def datasource_configured(conn_type: str) -> bool:
+    """Return True if a connection exists or required .env vars are set."""
+    if get_active_config(conn_type):
+        return True
+    if conn_type == 'snowflake':
+        return bool(
+            settings.snowflake_account
+            and settings.snowflake_user
+            and settings.snowflake_password
+        )
+    if conn_type == 'ghl':
+        return bool(settings.ghl_api_key)
+    return False
+
+
 def _public_view(conn: Dict[str, Any]) -> Dict[str, Any]:
     """Return a connection with secret fields masked"""
     view = {k: v for k, v in conn.items() if k != 'config'}
