@@ -9,6 +9,21 @@ from datetime import datetime
 from config import settings
 from hipaa_compliance import hipaa_manager
 
+GHL_API_VERSION = '2021-07-28'
+
+
+def ghl_request_headers(
+    api_key: str,
+    api_version: Optional[str] = None,
+) -> Dict[str, str]:
+    """Headers required by the GoHighLevel LeadConnector API."""
+    return {
+        'Authorization': f'Bearer {api_key}',
+        'Version': api_version or GHL_API_VERSION,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+    }
+
 
 class GHLClient:
     """
@@ -21,12 +36,9 @@ class GHLClient:
         self.api_key = config.get('api_key') or settings.ghl_api_key
         self.base_url = config.get('base_url') or settings.ghl_api_base_url
         self.location_id = config.get('location_id') or settings.ghl_location_id
+        self.api_version = config.get('api_version') or settings.ghl_api_version
         self.session = requests.Session()
-        self.session.headers.update({
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        })
+        self.session.headers.update(ghl_request_headers(self.api_key, self.api_version))
         
         # Setup logging
         self.logger = logging.getLogger(__name__)

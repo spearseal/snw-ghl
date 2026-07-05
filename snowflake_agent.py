@@ -16,7 +16,7 @@ from snowflake_schema import discover_schema
 logger = logging.getLogger(__name__)
 
 _COUNT_RE = re.compile(r'\b(how many|total|count|number of)\b', re.I)
-_LIST_RE = re.compile(r'\b(show|list|give|get|display|fetch|all|data|details|report)\b', re.I)
+_BROAD_RE = re.compile(r'\b(all columns|everything|full details|complete record|entire row)\b', re.I)
 
 _TOPIC_KEYWORDS = {
     'customer': ['customer', 'customers', 'contact', 'contacts', 'client', 'clients'],
@@ -24,6 +24,118 @@ _TOPIC_KEYWORDS = {
     'opportunity': ['opportunity', 'opportunities', 'deal', 'deals', 'pipeline'],
     'service': ['service', 'services'],
 }
+
+# Map question terms to likely column name fragments.
+_COLUMN_SYNONYMS: Dict[str, List[str]] = {
+    'phone': ['phone', 'mobile', 'cell', 'tel'],
+    'email': ['email', 'mail'],
+    'name': ['name', 'firstname', 'lastname', 'first_name', 'last_name'],
+    'address': ['address', 'street', 'city', 'zip'],
+    'message': ['message', 'body', 'last_message_body', 'text', 'content'],
+    'status': ['status', 'state'],
+    'channel': ['channel', 'medium'],
+    'unread': ['unread', 'unread_count'],
+    'contact': ['contact_id', 'contact'],
+    'conversation': ['conversation_id', 'conversation'],
+    'date': ['date', 'created', 'updated', 'timestamp'],
+    'direction': ['direction', 'last_message_direction'],
+    'service': ['service'],
+    'title': ['title', 'subject'],
+    'amount': ['amount', 'value', 'price', 'revenue'],
+}
+
+
+def _extract_select_columns(sql: str) -> Optional[List[str]]:
+    """Parse column names from a simple SELECT statement (not SELECT *)."""
+    match = re.search(r'^\s*select\s+(distinct\s+)?(.+?)\s+from\s+', sql, re.I | re.DOTALL)
+    if not match:
+        return None
+    clause = match.group(2).strip()
+    if clause == '*':
+        return None
+    columns: List[str] = []
+    for part in clause.split(','):
+        part = part.strip()
+        if not part:
+            continue
+        # Handle COUNT(*) AS TOTAL, expressions, table.col
+        alias_match = re.search(r'\bas\s+([a-zA-Z_][\w$]*)\s*$', part, re.I)
+        if alias_match:
+            columns.append(alias_match.group(1).upper())
+            continue
+        col = part.split()[-1]
+        col = col.split('.')[-1]
+        columns.append(col.upper())
+    return columns or None
+
+
+def _filter_rows_by_columns(
+    rows: List[Dict[str, Any]],
+    columns: Optional[List[str]],
+) -> List[Dict[str, Any]]:
+    if not columns or not rows:
+        return rows
+    allowed = {c.upper() for c in columns}
+    filtered = []
+    for row in rows:
+        subset = {
+            k: v for k, v in row.items()
+            if str(k).upper() in allowed
+        }
+        if subset:
+            filtered.append(subset)
+    return filtered or rows
+
+
+def _pick_columns(question: str, table: Dict[str, Any]) -> Optional[List[str]]:
+    """
+    Return specific column names when the question asks for particular fields.
+    Returns None to mean SELECT * (broad question).
+    """
+    if _BROAD_RE.search(question):
+        return None
+
+    q_lower = question.lower()
+    tokens = set(_tokenize(question))
+    matched: List[str] = []
+
+    for col in table['columns']:
+        col_name = col['name']
+        col_lower = col_name.lower()
+        col_parts = col_lower.split('_')
+
+        if col_lower in q_lower or col_lower in tokens:
+            matched.append(col_name)
+            continue
+
+        if any(part in tokens for part in col_parts if len(part) > 2):
+            matched.append(col_name)
+            continue
+
+        for _term, synonyms in _COLUMN_SYNONYMS.items():
+            if any(syn in tokens or syn in q_lower for syn in synonyms):
+                if any(syn in col_lower for syn in synonyms):
+                    matched.append(col_name)
+
+    # Deduplicate preserving order
+    seen = set()
+    unique = []
+    for col in matched:
+        key = col.upper()
+        if key not in seen:
+            seen.add(key)
+            unique.append(col)
+
+    if not unique:
+        return None
+
+    # Always include a stable id column when present and we're being selective
+    id_cols = [c['name'] for c in table['columns'] if c['name'].upper().endswith('_ID')]
+    for id_col in id_cols[:1]:
+        if id_col not in unique:
+            unique.insert(0, id_col)
+
+    return unique
 
 
 def _tokenize(text: str) -> List[str]:
@@ -111,8 +223,14 @@ def _heuristic_sql(question: str, schema: Dict[str, Any], limit: int) -> Tuple[s
         reasoning += ' Generated a COUNT query.'
         return sql, reasoning
 
-    sql = f"SELECT * FROM {qualified} LIMIT {int(limit)}"
-    reasoning += f' Generated SELECT with LIMIT {limit}.'
+    columns = _pick_columns(question, table)
+    if columns:
+        col_list = ', '.join(columns)
+        sql = f"SELECT {col_list} FROM {qualified} LIMIT {int(limit)}"
+        reasoning += f' Selected columns: {", ".join(columns)}.'
+    else:
+        sql = f"SELECT * FROM {qualified} LIMIT {int(limit)}"
+        reasoning += f' Returned all columns (broad question). LIMIT {limit}.'
     return sql, reasoning
 
 
@@ -138,9 +256,15 @@ def _llm_sql(question: str, schema: Dict[str, Any], limit: int) -> Optional[Tupl
         'You are a Snowflake SQL expert. Given a database schema and a user question, '
         'write exactly one read-only SELECT statement. '
         f'Always fully qualify tables as {prefix}.TABLE_NAME (unquoted identifiers). '
+        'IMPORTANT: Select ONLY the specific columns needed to answer the question. '
+        'Do NOT use SELECT * unless the user explicitly asks for all columns, '
+        'everything, full details, or a complete report. '
+        'If they ask about messages, select message/body columns only. '
+        'If they ask about status, select status columns only. '
+        'Include an ID column only when useful for context. '
         f'Never use INSERT, UPDATE, DELETE, DROP, or DDL. '
         f'Use LIMIT {limit} when returning rows. '
-        'Respond with JSON only: {"sql": "...", "reasoning": "..."}'
+        'Respond with JSON only: {"sql": "...", "reasoning": "...", "columns": ["COL1", "COL2"]}'
     )
     user = f"Schema:\n{_schema_text(schema)}\n\nQuestion: {question}"
 
@@ -235,16 +359,20 @@ class SnowflakeAgent:
         sql = _validate_sql(sql)
         rows = self.reader.run_query(sql)
 
+        selected_columns = _extract_select_columns(sql)
+        rows = _filter_rows_by_columns(rows, selected_columns)
+
         if mask_phi:
             rows = [self._mask_row(row) for row in rows]
 
-        answer = self._format_answer(question, sql, rows, schema, reasoning)
+        answer = self._format_answer(question, sql, rows, schema, reasoning, selected_columns)
 
         return {
             'answer': answer,
             'sql': sql,
             'reasoning': reasoning,
             'method': method,
+            'columns': selected_columns or (list(rows[0].keys()) if rows else []),
             'schema_summary': {
                 'database': schema['database'],
                 'schema': schema['schema'],
@@ -273,6 +401,7 @@ class SnowflakeAgent:
         rows: List[Dict[str, Any]],
         schema: Dict[str, Any],
         reasoning: str,
+        columns: Optional[List[str]] = None,
     ) -> str:
         if not rows:
             return (
@@ -282,7 +411,12 @@ class SnowflakeAgent:
         if len(rows) == 1 and 'TOTAL' in rows[0]:
             total = rows[0]['TOTAL']
             return f"Total: {total} record(s) in the matched table."
+        col_txt = ''
+        if columns:
+            col_txt = f" Columns: {', '.join(columns)}."
+        elif rows:
+            col_txt = f" Columns: {', '.join(str(k) for k in rows[0].keys())}."
         return (
-            f"Found {len(rows)} row(s) from {schema['database']}.{schema['schema']} "
-            f"across {schema['table_count']} analyzed table(s)."
+            f"Found {len(rows)} row(s) from {schema['database']}.{schema['schema']}."
+            f"{col_txt}"
         )

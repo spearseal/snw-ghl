@@ -28,6 +28,7 @@ interface AgentResponse {
   sql: string | null;
   reasoning: string;
   method?: string;
+  columns?: string[];
   row_count: number;
   rows: Record<string, unknown>[];
   schema_summary?: {
@@ -509,6 +510,11 @@ export default function Home() {
                   Analyzed {agentResponse.schema_summary.table_count} tables in{' '}
                   {agentResponse.schema_summary.database}.
                   {agentResponse.schema_summary.schema}
+                </p>
+              )}
+              {agentResponse.columns && agentResponse.columns.length > 0 && (
+                <p className="mt-1 text-xs text-sky-300/70">
+                  Columns: {agentResponse.columns.join(', ')}
                 </p>
               )}
             </div>

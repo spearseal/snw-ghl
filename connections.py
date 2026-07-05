@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from auth import get_current_user
 from config import settings
+from ghl_client import ghl_request_headers
 from hipaa_compliance import hipaa_manager
 from snowflake_auth import snowflake_connect, uses_key_pair_auth
 
@@ -248,6 +249,7 @@ def _seed_defaults():
                 'api_key': settings.ghl_api_key,
                 'base_url': settings.ghl_api_base_url,
                 'location_id': settings.ghl_location_id or '',
+                'api_version': settings.ghl_api_version,
             }),
             'created_by': 'system',
             'created_at': datetime.now(timezone.utc).isoformat(),
@@ -280,10 +282,10 @@ def _test_ghl(config: Dict[str, str]) -> Dict[str, Any]:
         params['locationId'] = config['location_id']
     resp = requests.get(
         f'{base_url}/contacts/',
-        headers={
-            'Authorization': f"Bearer {config.get('api_key')}",
-            'Accept': 'application/json',
-        },
+        headers=ghl_request_headers(
+            config.get('api_key') or '',
+            config.get('api_version') or settings.ghl_api_version,
+        ),
         params=params,
         timeout=15,
     )

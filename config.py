@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         env="GHL_API_BASE_URL"
     )
     ghl_location_id: Optional[str] = Field(None, env="GHL_LOCATION_ID")
+    ghl_api_version: str = Field(default="2021-07-28", env="GHL_API_VERSION")
     
     # Snowflake Configuration
     snowflake_account: str = Field(default="", env="SNOWFLAKE_ACCOUNT")
