@@ -11,14 +11,20 @@ export function getEmail(): string | null {
   return localStorage.getItem(EMAIL_KEY);
 }
 
-export function setSession(token: string, email: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(EMAIL_KEY, email);
-}
-
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(EMAIL_KEY);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('session-change'));
+  }
+}
+
+export function setSession(token: string, email: string) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(EMAIL_KEY, email);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('session-change'));
+  }
 }
 
 const API_TIMEOUT_MS = 30_000;

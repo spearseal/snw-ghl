@@ -156,28 +156,28 @@ export default function EmailPanel() {
         </div>
       )}
 
-      <form onSubmit={saveSettings} className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-4">
-        <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
+      <form onSubmit={saveSettings} className="space-y-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
+        <div className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-200">
           <Settings2 className="h-4 w-4" />
           Campaign settings
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Provider</label>
+            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Provider</label>
             <select
               value={settings.provider}
               onChange={(e) =>
                 setSettings((s) => ({ ...s, provider: e.target.value as 'ghl' | 'smtp' }))
               }
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm"
             >
               <option value="ghl">GoHighLevel (recommended)</option>
               <option value="smtp">SMTP</option>
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-400">Inactive days threshold</label>
+            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Inactive days threshold</label>
             <input
               type="number"
               min={30}
@@ -186,23 +186,23 @@ export default function EmailPanel() {
               onChange={(e) =>
                 setSettings((s) => ({ ...s, inactive_days: Number(e.target.value) }))
               }
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-400">From email</label>
+            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">From email</label>
             <input
               value={settings.from_email}
               onChange={(e) => setSettings((s) => ({ ...s, from_email: e.target.value }))}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-400">From name</label>
+            <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">From name</label>
             <input
               value={settings.from_name}
               onChange={(e) => setSettings((s) => ({ ...s, from_name: e.target.value }))}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm"
             />
           </div>
         </div>
@@ -213,46 +213,46 @@ export default function EmailPanel() {
               placeholder="SMTP host"
               value={settings.smtp_host}
               onChange={(e) => setSettings((s) => ({ ...s, smtp_host: e.target.value }))}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm"
             />
             <input
               type="number"
               placeholder="SMTP port"
               value={settings.smtp_port}
               onChange={(e) => setSettings((s) => ({ ...s, smtp_port: Number(e.target.value) }))}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm"
             />
             <input
               placeholder="SMTP user"
               value={settings.smtp_user}
               onChange={(e) => setSettings((s) => ({ ...s, smtp_user: e.target.value }))}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm"
             />
             <input
               type="password"
               placeholder="SMTP password"
               value={settings.smtp_password}
               onChange={(e) => setSettings((s) => ({ ...s, smtp_password: e.target.value }))}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm"
             />
           </div>
         )}
 
         <div>
-          <label className="mb-1 block text-xs text-slate-400">Subject (use {'{{name}}'})</label>
+          <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">Subject (use {'{{name}}'})</label>
           <input
             value={settings.subject_template}
             onChange={(e) => setSettings((s) => ({ ...s, subject_template: e.target.value }))}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-slate-400">HTML body template</label>
+          <label className="mb-1 block text-xs text-slate-600 dark:text-slate-400">HTML body template</label>
           <textarea
             rows={5}
             value={settings.body_template}
             onChange={(e) => setSettings((s) => ({ ...s, body_template: e.target.value }))}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs"
+            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 font-mono text-xs"
           />
         </div>
 
@@ -265,9 +265,9 @@ export default function EmailPanel() {
         </button>
       </form>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
         <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-200">
             <Mail className="h-4 w-4" />
             Follow-up candidates ({candidates.length})
           </div>
@@ -276,7 +276,7 @@ export default function EmailPanel() {
               type="button"
               disabled={sending || candidates.length === 0}
               onClick={() => sendFollowup(true)}
-              className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+              className="rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
             >
               Dry run
             </button>
@@ -300,9 +300,9 @@ export default function EmailPanel() {
             {candidates.slice(0, 20).map((c) => (
               <div
                 key={`${c.source}-${c.id}`}
-                className="flex items-center justify-between rounded-lg bg-slate-950 px-3 py-2 text-xs"
+                className="flex items-center justify-between rounded-lg bg-white dark:bg-slate-950 px-3 py-2 text-xs"
               >
-                <span className="text-slate-300">{c.name}</span>
+                <span className="text-slate-700 dark:text-slate-300">{c.name}</span>
                 <span className="text-slate-500">
                   {c.source} · {c.days_inactive ?? '?'}d inactive
                 </span>

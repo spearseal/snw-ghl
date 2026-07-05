@@ -76,8 +76,8 @@ export default function CeoTasksPage() {
               CEO Priorities
             </span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-50">Top 5 Tasks for Medspa CEOs</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Top 5 Tasks for Medspa CEOs</h1>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             Prioritized actions from your connected GoHighLevel and Snowflake patient data.
             {data?.generated_at && (
               <span className="text-slate-500">
@@ -96,7 +96,7 @@ export default function CeoTasksPage() {
               value={snowflakePasscode}
               onChange={(e) => setSnowflakePasscode(e.target.value.replace(/\D/g, ''))}
               placeholder="Snowflake MFA"
-              className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs"
+              className="w-28 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 font-mono text-xs"
             />
           )}
           <button
@@ -152,11 +152,11 @@ export default function CeoTasksPage() {
           <Loader2 className="h-8 w-8 animate-spin text-indigo-400" />
         </div>
       ) : data?.message && !data.ceo_tasks?.length ? (
-        <div className="rounded-2xl border border-dashed border-slate-800 px-6 py-16 text-center text-slate-500">
+        <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 px-6 py-16 text-center text-slate-500">
           {data.message}
         </div>
       ) : (
-        <div className="rounded-2xl border border-indigo-800/40 bg-gradient-to-br from-indigo-950/40 to-slate-900/60 p-6">
+        <div className="rounded-2xl border border-indigo-800/40 bg-gradient-to-br from-indigo-50 to-slate-100 p-6 dark:border-indigo-800/40 dark:from-indigo-950/40 dark:to-slate-900/60">
           <CeoTaskList tasks={data?.ceo_tasks || []} />
         </div>
       )}

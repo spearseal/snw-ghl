@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 transition-colors duration-200;
+  }
+
+  html.dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
 }

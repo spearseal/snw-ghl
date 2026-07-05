@@ -49,7 +49,7 @@ const SEVERITY_STYLES: Record<string, string> = {
 const PRIORITY_STYLES: Record<string, string> = {
   high: 'text-red-400',
   medium: 'text-amber-400',
-  low: 'text-slate-400',
+  low: 'text-slate-600 dark:text-slate-400',
 };
 
 export default function CompliancePanel() {
@@ -97,7 +97,7 @@ export default function CompliancePanel() {
             <ShieldCheck className="h-6 w-6 text-emerald-400" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-200">Customer service compliance</p>
+            <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Customer service compliance</p>
             <p className="text-xs text-slate-500">
               Evaluates patient communication data and recommends follow-ups
             </p>
@@ -106,7 +106,7 @@ export default function CompliancePanel() {
         <button
           type="button"
           onClick={load}
-          className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+          className="flex items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Re-evaluate
@@ -120,15 +120,15 @@ export default function CompliancePanel() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/60 p-4 text-center">
           <p className={`text-4xl font-bold ${scoreColor}`}>{score}</p>
           <p className="text-xs text-slate-500">Compliance score</p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/60 p-4 text-center">
           <p className="text-4xl font-bold text-indigo-300">{grade}</p>
           <p className="text-xs text-slate-500">Grade</p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-center">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/60 p-4 text-center">
           <p className="text-4xl font-bold text-violet-300">
             {data?.recommendation_count ?? data?.followup_recommendations?.length ?? 0}
           </p>
@@ -137,14 +137,14 @@ export default function CompliancePanel() {
       </div>
 
       {data?.summary && (
-        <p className="rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-3 text-sm text-slate-300">
+        <p className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
           {data.summary}
         </p>
       )}
 
       {data?.findings && data.findings.length > 0 && (
         <div>
-          <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
             <AlertTriangle className="h-3.5 w-3.5" />
             Findings
           </h3>
@@ -166,7 +166,7 @@ export default function CompliancePanel() {
 
       {data?.followup_recommendations && data.followup_recommendations.length > 0 && (
         <div>
-          <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">
             <UserPlus className="h-3.5 w-3.5" />
             Recommended follow-ups
           </h3>
@@ -174,7 +174,7 @@ export default function CompliancePanel() {
             {data.followup_recommendations.map((rec, i) => (
               <div
                 key={i}
-                className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-xs"
+                className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-2.5 text-xs"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`font-semibold uppercase ${PRIORITY_STYLES[rec.priority] || ''}`}>
@@ -182,15 +182,15 @@ export default function CompliancePanel() {
                   </span>
                   <span className="text-slate-500">{rec.source}</span>
                   {rec.suggested_channel && (
-                    <span className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-400">
+                    <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-slate-600 dark:text-slate-400">
                       via {rec.suggested_channel}
                     </span>
                   )}
                 </div>
-                <p className="mt-1 font-medium text-slate-200">{rec.action}</p>
+                <p className="mt-1 font-medium text-slate-800 dark:text-slate-200">{rec.action}</p>
                 <p className="text-slate-500">{rec.reason}</p>
                 {rec.contact_name && (
-                  <p className="mt-1 text-slate-400">
+                  <p className="mt-1 text-slate-600 dark:text-slate-400">
                     Patient: {rec.contact_name}
                   </p>
                 )}

@@ -335,8 +335,8 @@ export default function Home() {
           <span className="text-lg">👖</span>
           <span className="text-xs font-medium uppercase tracking-wider">Denim-powered AI</span>
         </div>
-        <h1 className="text-2xl font-bold text-slate-50">Jeans AI</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Jeans AI</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Your stretch-fit data assistant — queries Snowflake &amp; GHL without ripping at the seams.
           Smart mode goes live; Memory Search digs through pre-loaded chunks.
         </p>
@@ -347,7 +347,7 @@ export default function Home() {
             className={`rounded-lg px-3 py-1.5 text-sm ${
               queryMode === 'smart'
                 ? 'bg-indigo-600 text-white'
-                : 'bg-slate-800 text-slate-300'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
             }`}
           >
             Smart Jeans
@@ -358,7 +358,7 @@ export default function Home() {
             className={`rounded-lg px-3 py-1.5 text-sm ${
               queryMode === 'memory'
                 ? 'bg-indigo-600 text-white'
-                : 'bg-slate-800 text-slate-300'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
             }`}
           >
             Memory Search
@@ -367,7 +367,7 @@ export default function Home() {
             <button
               type="button"
               onClick={loadSchema}
-              className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700"
+              className="rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
             >
               Analyze Schema
             </button>
@@ -376,7 +376,7 @@ export default function Home() {
       </div>
 
       {/* Connected sources + memory status */}
-      <div className="mb-6 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
+      <div className="mb-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/60 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -394,7 +394,7 @@ export default function Home() {
                 <span className="text-amber-400 text-xs">None — connect in DB Connectors</span>
               )}
             </div>
-            <div className="text-sm text-slate-300">
+            <div className="text-sm text-slate-700 dark:text-slate-300">
               {health ? (
                 <>
                   <span className="font-medium">{health.indexed_chunks}</span> chunks
@@ -420,7 +420,7 @@ export default function Home() {
           <button
             onClick={refreshIndex}
             disabled={refreshing || (!snowflakeConnected && !ghlConnected)}
-            className="flex shrink-0 items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
+            className="flex shrink-0 items-center gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-sm text-slate-800 dark:text-slate-200 transition hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50"
             title="Manually reload connected sources into memory"
           >
             {refreshing ? (
@@ -432,8 +432,8 @@ export default function Home() {
           </button>
         </div>
         {snowflakeConnected && snowflakeNeedsMfa && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
-            <label htmlFor="snowflake-mfa" className="text-xs text-slate-400">
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200 dark:border-slate-800 pt-3">
+            <label htmlFor="snowflake-mfa" className="text-xs text-slate-600 dark:text-slate-400">
               Snowflake MFA code
             </label>
             <input
@@ -445,7 +445,7 @@ export default function Home() {
               value={snowflakePasscode}
               onChange={(e) => setSnowflakePasscode(e.target.value.replace(/\D/g, ''))}
               placeholder="6-digit code"
-              className="w-32 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 outline-none focus:border-indigo-500"
+              className="w-32 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
             />
             <span className="text-xs text-slate-500">
               Required to load Snowflake data (expires every ~30s)
@@ -453,7 +453,7 @@ export default function Home() {
           </div>
         )}
         {snowflakeConnected && !snowflakeNeedsMfa && (
-          <p className="mt-3 border-t border-slate-800 pt-3 text-xs text-emerald-400">
+          <p className="mt-3 border-t border-slate-200 dark:border-slate-800 pt-3 text-xs text-emerald-400">
             Snowflake key-pair auth — no MFA code needed
           </p>
         )}
@@ -473,7 +473,7 @@ export default function Home() {
                   ? 'e.g. Jeans, how many patients slipped through the cracks?'
                   : 'e.g. Which contacts have open opportunities?'
               }
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 py-3 pl-11 pr-4 text-slate-100 placeholder-slate-500 outline-none transition focus:border-indigo-500"
+              className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 py-3 pl-11 pr-4 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 outline-none transition focus:border-indigo-500"
             />
           </div>
           <button
@@ -489,12 +489,12 @@ export default function Home() {
             Query
           </button>
         </div>
-        <label className="mt-3 flex items-center gap-2 text-sm text-slate-400">
+        <label className="mt-3 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
           <input
             type="checkbox"
             checked={maskPhi}
             onChange={(e) => setMaskPhi(e.target.checked)}
-            className="h-4 w-4 rounded border-slate-600 bg-slate-800 accent-indigo-500"
+            className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 accent-indigo-500"
           />
           Mask PHI in results (recommended)
         </label>
@@ -509,8 +509,8 @@ export default function Home() {
         )}
 
         {schemaInfo && queryMode === 'smart' && (
-          <div className="mb-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
-            <p className="mb-2 font-medium text-slate-200">
+          <div className="mb-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/60 p-4 text-sm">
+            <p className="mb-2 font-medium text-slate-800 dark:text-slate-200">
               Schema {schemaInfo.database}.{schemaInfo.schema} — {schemaInfo.table_count}{' '}
               table(s)
             </p>
@@ -518,7 +518,7 @@ export default function Home() {
               {schemaInfo.tables.map((t) => (
                 <span
                   key={t.name}
-                  className="rounded-full bg-slate-800 px-2.5 py-1 font-mono text-xs text-slate-400"
+                  className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-1 font-mono text-xs text-slate-600 dark:text-slate-400"
                 >
                   {t.name}
                   {t.row_count != null ? ` (${t.row_count})` : ''}
@@ -563,15 +563,15 @@ export default function Home() {
                   </p>
                 )}
                 {smartResponse.results_by_source.snowflake.sql && (
-                  <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-emerald-300">
+                  <pre className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4 font-mono text-xs text-emerald-300">
                     {smartResponse.results_by_source.snowflake.sql}
                   </pre>
                 )}
                 {smartResponse.results_by_source.snowflake.rows &&
                   smartResponse.results_by_source.snowflake.rows.length > 0 && (
-                    <div className="overflow-x-auto rounded-xl border border-slate-800">
-                      <table className="min-w-full text-left text-sm text-slate-300">
-                        <thead className="bg-slate-900 text-xs uppercase text-slate-500">
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                      <table className="min-w-full text-left text-sm text-slate-700 dark:text-slate-300">
+                        <thead className="bg-slate-100 dark:bg-slate-900 text-xs uppercase text-slate-500">
                           <tr>
                             {Object.keys(smartResponse.results_by_source.snowflake.rows[0]).map(
                               (col) => (
@@ -584,7 +584,7 @@ export default function Home() {
                         </thead>
                         <tbody>
                           {smartResponse.results_by_source.snowflake.rows.map((row, i) => (
-                            <tr key={i} className="border-t border-slate-800">
+                            <tr key={i} className="border-t border-slate-200 dark:border-slate-800">
                               {Object.keys(
                                 smartResponse.results_by_source.snowflake!.rows[0]
                               ).map((col) => (
@@ -615,20 +615,20 @@ export default function Home() {
                 {smartResponse.results_by_source.ghl.results.map((r, i) => (
                   <div
                     key={i}
-                    className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
+                    className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/60 p-4"
                   >
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
                       <span className="rounded-full bg-indigo-900/40 px-2.5 py-1 text-indigo-300">
                         GoHighLevel
                       </span>
-                      <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-400">
+                      <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-slate-600 dark:text-slate-400">
                         {r.entity}
                       </span>
                       <span className="ml-auto text-slate-500">
                         relevance {r.score.toFixed(2)}
                       </span>
                     </div>
-                    <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-slate-300">
+                    <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-slate-700 dark:text-slate-300">
                       {r.text}
                     </pre>
                   </div>
@@ -657,14 +657,14 @@ export default function Home() {
               )}
             </div>
             {agentResponse.sql && (
-              <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-emerald-300">
+              <pre className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4 font-mono text-xs text-emerald-300">
                 {agentResponse.sql}
               </pre>
             )}
             {agentResponse.rows.length > 0 && (
-              <div className="overflow-x-auto rounded-xl border border-slate-800">
-                <table className="min-w-full text-left text-sm text-slate-300">
-                  <thead className="bg-slate-900 text-xs uppercase text-slate-500">
+              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                <table className="min-w-full text-left text-sm text-slate-700 dark:text-slate-300">
+                  <thead className="bg-slate-100 dark:bg-slate-900 text-xs uppercase text-slate-500">
                     <tr>
                       {Object.keys(agentResponse.rows[0]).map((col) => (
                         <th key={col} className="px-4 py-2">
@@ -675,7 +675,7 @@ export default function Home() {
                   </thead>
                   <tbody>
                     {agentResponse.rows.map((row, i) => (
-                      <tr key={i} className="border-t border-slate-800">
+                      <tr key={i} className="border-t border-slate-200 dark:border-slate-800">
                         {Object.keys(agentResponse.rows[0]).map((col) => (
                           <td key={col} className="px-4 py-2 font-mono text-xs">
                             {String(row[col] ?? '')}
@@ -716,7 +716,7 @@ export default function Home() {
             {response.results.map((r, i) => (
               <div
                 key={i}
-                className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
+                className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/60 p-4"
               >
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
                   <span
@@ -728,11 +728,11 @@ export default function Home() {
                   >
                     {SOURCE_LABELS[r.source] || r.source}
                   </span>
-                  <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-400">
+                  <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-slate-600 dark:text-slate-400">
                     {r.entity}
                   </span>
                   {r.record_id && (
-                    <span className="rounded-full bg-slate-800 px-2.5 py-1 font-mono text-slate-500">
+                    <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-1 font-mono text-slate-500">
                       id: {r.record_id}
                     </span>
                   )}
@@ -740,7 +740,7 @@ export default function Home() {
                     relevance {r.score.toFixed(2)}
                   </span>
                 </div>
-                <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-slate-300">
+                <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-slate-700 dark:text-slate-300">
                   {r.text}
                 </pre>
               </div>
@@ -749,7 +749,7 @@ export default function Home() {
         )}
 
         {!response && !agentResponse && !smartResponse && !error && (
-          <div className="rounded-xl border border-dashed border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
+          <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
             {queryMode === 'smart'
               ? 'Connect your sources, hit Refresh Memory, then ask Jeans anything — it fits every datasource.'
               : 'Connect sources, refresh memory, then search indexed chunks.'}

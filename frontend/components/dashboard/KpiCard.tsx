@@ -11,11 +11,19 @@ export interface KpiData {
 }
 
 const SOURCE_STYLES: Record<string, { bg: string; text: string; icon: typeof Database }> = {
-  GoHighLevel: { bg: 'from-violet-600/20 to-violet-900/10', text: 'text-violet-300', icon: Database },
-  Snowflake: { bg: 'from-sky-600/20 to-sky-900/10', text: 'text-sky-300', icon: Snowflake },
+  GoHighLevel: {
+    bg: 'from-violet-100 to-violet-50 dark:from-violet-600/20 dark:to-violet-900/10',
+    text: 'text-violet-600 dark:text-violet-300',
+    icon: Database,
+  },
+  Snowflake: {
+    bg: 'from-sky-100 to-sky-50 dark:from-sky-600/20 dark:to-sky-900/10',
+    text: 'text-sky-600 dark:text-sky-300',
+    icon: Snowflake,
+  },
   'GoHighLevel + Snowflake': {
-    bg: 'from-indigo-600/20 to-emerald-900/10',
-    text: 'text-indigo-300',
+    bg: 'from-indigo-100 to-emerald-50 dark:from-indigo-600/20 dark:to-emerald-900/10',
+    text: 'text-indigo-600 dark:text-indigo-300',
     icon: TrendingUp,
   },
 };
@@ -27,27 +35,29 @@ export default function KpiCard({ kpi }: { kpi: KpiData }) {
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 transition hover:border-slate-600 ${
+      className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 transition hover:border-slate-300 dark:hover:border-slate-600 ${
         isAttention
-          ? 'border-amber-700/50 from-amber-950/30 to-slate-900/60'
-          : `border-slate-800 ${style.bg}`
+          ? 'border-amber-300 from-amber-50 to-slate-100 dark:border-amber-700/50 dark:from-amber-950/30 dark:to-slate-900/60'
+          : `border-slate-200 dark:border-slate-800 ${style.bg}`
       }`}
     >
       {isAttention && (
-        <AlertTriangle className="absolute right-4 top-4 h-4 w-4 text-amber-400" />
+        <AlertTriangle className="absolute right-4 top-4 h-4 w-4 text-amber-500 dark:text-amber-400" />
       )}
       <div className="mb-3 flex items-center gap-2">
-        <Icon className={`h-4 w-4 ${isAttention ? 'text-amber-400' : style.text}`} />
+        <Icon className={`h-4 w-4 ${isAttention ? 'text-amber-500 dark:text-amber-400' : style.text}`} />
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-            isAttention ? 'bg-amber-900/40 text-amber-300' : 'bg-slate-800/80 text-slate-400'
+            isAttention
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+              : 'bg-slate-200/80 text-slate-600 dark:bg-slate-800/80 dark:text-slate-400'
           }`}
         >
           {kpi.source}
         </span>
       </div>
-      <p className="text-3xl font-bold tracking-tight text-slate-50">{kpi.value}</p>
-      <p className="mt-1 text-sm font-medium text-slate-200">{kpi.label}</p>
+      <p className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">{kpi.value}</p>
+      <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-200">{kpi.label}</p>
       {kpi.detail && (
         <p className="mt-2 text-xs leading-relaxed text-slate-500">{kpi.detail}</p>
       )}

@@ -270,7 +270,7 @@ export default function ConnectorsPanel() {
         </span>
       );
     return (
-      <span className="rounded-full border border-slate-700 bg-slate-800/50 px-2 py-0.5 text-xs text-slate-400">
+      <span className="rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-400">
         Not tested
       </span>
     );
@@ -298,14 +298,14 @@ export default function ConnectorsPanel() {
       {showForm && (
         <form
           onSubmit={saveConnection}
-          className="mb-6 rounded-2xl border border-indigo-800/50 bg-slate-900/60 p-6"
+          className="mb-6 rounded-2xl border border-indigo-800/50 bg-slate-100/80 dark:bg-slate-900/60 p-6"
         >
           <h2 className="mb-4 font-medium">
             {editingId ? 'Edit Connection' : 'Create New Connection'}
           </h2>
           <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-sm text-slate-400">
+              <label className="mb-1.5 block text-sm text-slate-600 dark:text-slate-400">
                 Connection Name
               </label>
               <input
@@ -313,11 +313,11 @@ export default function ConnectorsPanel() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g. Prod Snowflake"
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 placeholder-slate-600 outline-none focus:border-indigo-500"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 outline-none focus:border-indigo-500"
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm text-slate-400">
+              <label className="mb-1.5 block text-sm text-slate-600 dark:text-slate-400">
                 Type
               </label>
               <select
@@ -327,7 +327,7 @@ export default function ConnectorsPanel() {
                   setNewConfig({});
                   setSnowflakeAuthMethod('key_pair');
                 }}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-indigo-500"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
               >
                 <option value="snowflake">Snowflake</option>
                 <option value="ghl">GoHighLevel</option>
@@ -335,7 +335,7 @@ export default function ConnectorsPanel() {
             </div>
             {newType === 'snowflake' && (
               <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-sm text-slate-400">
+                <label className="mb-1.5 block text-sm text-slate-600 dark:text-slate-400">
                   Snowflake Auth Method
                 </label>
                 <select
@@ -355,7 +355,7 @@ export default function ConnectorsPanel() {
                       return next;
                     });
                   }}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-indigo-500"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
                 >
                   <option value="key_pair">Key-pair (service user, no MFA)</option>
                   <option value="password">Password + MFA</option>
@@ -367,7 +367,7 @@ export default function ConnectorsPanel() {
                 key={f.key}
                 className={'multiline' in f && f.multiline ? 'sm:col-span-2' : ''}
               >
-                <label className="mb-1.5 block text-sm text-slate-400">
+                <label className="mb-1.5 block text-sm text-slate-600 dark:text-slate-400">
                   {f.label}
                   {f.required && <span className="text-red-400"> *</span>}
                 </label>
@@ -383,7 +383,7 @@ export default function ConnectorsPanel() {
                     }
                     rows={5}
                     placeholder="-----BEGIN PRIVATE KEY-----"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100 outline-none focus:border-indigo-500"
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 font-mono text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
                   />
                 ) : (
                   <input
@@ -396,7 +396,7 @@ export default function ConnectorsPanel() {
                         [f.key]: e.target.value,
                       }))
                     }
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-indigo-500"
+                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
                   />
                 )}
               </div>
@@ -420,7 +420,7 @@ export default function ConnectorsPanel() {
             <button
               type="button"
               onClick={resetForm}
-              className="rounded-lg px-4 py-2 text-sm text-slate-400 transition hover:bg-slate-800"
+              className="rounded-lg px-4 py-2 text-sm text-slate-600 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-800"
             >
               Cancel
             </button>
@@ -434,7 +434,7 @@ export default function ConnectorsPanel() {
           <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
         </div>
       ) : connections.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
+        <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
           No connections yet. Add credentials to .env or create a new
           connection.
         </div>
@@ -443,11 +443,11 @@ export default function ConnectorsPanel() {
           {connections.map((c) => (
             <div
               key={c.id}
-              className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+              className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/60 p-5"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-slate-800 p-2.5">
+                  <div className="rounded-lg bg-slate-100 dark:bg-slate-800 p-2.5">
                     {c.type === 'snowflake' ? (
                       <Snowflake className="h-5 w-5 text-sky-400" />
                     ) : (
@@ -487,7 +487,7 @@ export default function ConnectorsPanel() {
                         }))
                       }
                       placeholder="MFA code"
-                      className="w-24 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-indigo-500"
+                      className="w-24 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-2 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500"
                     />
                   )}
                   <button
@@ -499,7 +499,7 @@ export default function ConnectorsPanel() {
                       )
                     }
                     disabled={testing === c.id}
-                    className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-sm text-slate-800 dark:text-slate-200 transition hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50"
                   >
                     {testing === c.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -511,7 +511,7 @@ export default function ConnectorsPanel() {
                   <button
                     onClick={() => startEdit(c)}
                     title="Edit connection"
-                    className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-800 hover:text-slate-200"
+                    className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
@@ -545,7 +545,7 @@ export default function ConnectorsPanel() {
                   .map(([k, v]) => (
                     <span
                       key={k}
-                      className="rounded-full bg-slate-800 px-2.5 py-1 font-mono text-[11px] text-slate-400"
+                      className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-1 font-mono text-[11px] text-slate-600 dark:text-slate-400"
                     >
                       {k}: {v}
                     </span>

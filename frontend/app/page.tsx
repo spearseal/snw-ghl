@@ -89,8 +89,8 @@ export default function DashboardPage() {
               Marketing Intelligence
             </span>
           </div>
-          <h1 className="text-2xl font-bold text-slate-50">Insights Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Insights Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             KPI cards from connected GoHighLevel and Snowflake data sources.
             {insights?.generated_at && (
               <span className="text-slate-500">
@@ -109,7 +109,7 @@ export default function DashboardPage() {
               value={snowflakePasscode}
               onChange={(e) => setSnowflakePasscode(e.target.value.replace(/\D/g, ''))}
               placeholder="Snowflake MFA"
-              className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs"
+              className="w-28 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 font-mono text-xs"
             />
           )}
           <button
@@ -165,7 +165,7 @@ export default function DashboardPage() {
           <Loader2 className="h-8 w-8 animate-spin text-indigo-400" />
         </div>
       ) : insights?.message && !insights.kpis?.length ? (
-        <div className="rounded-2xl border border-dashed border-slate-800 px-6 py-16 text-center text-slate-500">
+        <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 px-6 py-16 text-center text-slate-500">
           {insights.message}
         </div>
       ) : (
@@ -177,18 +177,18 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-8 grid gap-4 lg:grid-cols-3">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5 lg:col-span-2">
-              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-200">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-5 lg:col-span-2">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
                 <TrendingUp className="h-4 w-4 text-indigo-400" />
                 Source breakdown
               </h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 {insights?.summary?.ghl && (
-                  <div className="rounded-xl border border-violet-800/30 bg-violet-950/20 p-4">
-                    <p className="mb-3 text-xs font-medium uppercase tracking-wide text-violet-300">
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-800/30 dark:bg-violet-950/20">
+                    <p className="mb-3 text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">
                       GoHighLevel
                     </p>
-                    <ul className="space-y-2 text-sm text-slate-300">
+                    <ul className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
                       <li className="flex justify-between">
                         <span>Contacts</span>
                         <span>{insights.summary.ghl.contacts}</span>
@@ -201,7 +201,7 @@ export default function DashboardPage() {
                         <span>Conversations</span>
                         <span>{insights.summary.ghl.conversations}</span>
                       </li>
-                      <li className="flex justify-between text-amber-300">
+                      <li className="flex justify-between text-amber-600 dark:text-amber-300">
                         <span>90d no follow-up</span>
                         <span>{insights.summary.ghl.inactive_no_followup}</span>
                       </li>
@@ -209,11 +209,11 @@ export default function DashboardPage() {
                   </div>
                 )}
                 {insights?.summary?.snowflake && (
-                  <div className="rounded-xl border border-sky-800/30 bg-sky-950/20 p-4">
-                    <p className="mb-3 text-xs font-medium uppercase tracking-wide text-sky-300">
+                  <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-800/30 dark:bg-sky-950/20">
+                    <p className="mb-3 text-xs font-medium uppercase tracking-wide text-sky-600 dark:text-sky-300">
                       Snowflake
                     </p>
-                    <ul className="space-y-2 text-sm text-slate-300">
+                    <ul className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
                       <li className="flex justify-between">
                         <span>Contacts</span>
                         <span>{insights.summary.snowflake.contacts}</span>
@@ -226,7 +226,7 @@ export default function DashboardPage() {
                         <span>Conversations</span>
                         <span>{insights.summary.snowflake.conversations}</span>
                       </li>
-                      <li className="flex justify-between text-amber-300">
+                      <li className="flex justify-between text-amber-600 dark:text-amber-300">
                         <span>90d stale</span>
                         <span>{insights.summary.snowflake.inactive_no_followup}</span>
                       </li>
@@ -236,19 +236,19 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-amber-800/40 bg-amber-950/20 p-5">
-              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-200">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800/40 dark:bg-amber-950/20">
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-800 dark:text-amber-200">
                 <AlertCircle className="h-4 w-4" />
                 Re-engagement queue
               </h2>
-              <p className="text-3xl font-bold text-amber-100">
+              <p className="text-3xl font-bold text-amber-700 dark:text-amber-100">
                 {insights?.followup_candidate_count ?? 0}
               </p>
-              <p className="mt-2 text-xs leading-relaxed text-amber-300/80">
+              <p className="mt-2 text-xs leading-relaxed text-amber-700/80 dark:text-amber-300/80">
                 Customers with 90+ days no show and no follow-up. Open the bottom
                 taskbar → Email Follow-up to configure and send campaigns.
               </p>
-              <div className="mt-4 space-y-2 text-xs text-slate-400">
+              <div className="mt-4 space-y-2 text-xs text-slate-600 dark:text-slate-400">
                 <p className="flex items-center gap-2">
                   <Users className="h-3.5 w-3.5" />
                   Hover bottom edge for settings
