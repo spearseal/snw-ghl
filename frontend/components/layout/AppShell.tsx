@@ -12,7 +12,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const panel = searchParams.get('panel');
-    if (panel === 'connectors' || panel === 'email') {
+    if (panel === 'connectors' || panel === 'email' || panel === 'compliance') {
       setActivePanel(panel);
     }
   }, [searchParams]);

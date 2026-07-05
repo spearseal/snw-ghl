@@ -36,6 +36,7 @@ from email_followup import (
     send_followup_emails,
 )
 from insights import compute_insights
+from medspa_insights import compute_ceo_tasks, evaluate_compliance
 from hipaa_compliance import hipaa_manager
 from query_engine import QueryEngine, detect_query_sources
 from snowflake_agent import SnowflakeAgent
@@ -558,19 +559,21 @@ def agent_query(req: AgentQueryRequest, user: str = Depends(get_current_user)):
         reader.disconnect()
 
 
+@app.get('/api/insights')
 def get_insights(
     snowflake_passcode: Optional[str] = None,
     limit_per_entity: int = 500,
     inactive_days: int = 90,
     user: str = Depends(get_current_user),
 ):
-    """Marketing KPIs and follow-up candidates from connected GHL + Snowflake data."""
+    """Marketing KPIs, CEO tasks, and follow-up candidates from connected sources."""
     _seed_defaults()
     connected = get_connected_sources()
     if not connected['ghl'] and not connected['snowflake']:
         return {
             'connected_sources': connected,
             'kpis': [],
+            'ceo_tasks': [],
             'followup_candidates': [],
             'message': 'Connect GoHighLevel and/or Snowflake in DB Connectors first.',
         }
@@ -584,8 +587,42 @@ def get_insights(
     email_cfg = load_email_settings()
     threshold = email_cfg.get('inactive_days') or inactive_days
     result = compute_insights(datasets, connected, inactive_days=threshold)
+    result['ceo_tasks'] = compute_ceo_tasks(datasets, connected, inactive_days=threshold)
     result['errors'] = errors or None
     result['skipped'] = skipped or None
+    return result
+
+
+@app.get('/api/compliance/evaluate')
+def compliance_evaluate(
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+    inactive_days: int = 90,
+    user: str = Depends(get_current_user),
+):
+    """Evaluate customer service data and recommend compliance-oriented follow-ups."""
+    _seed_defaults()
+    connected = get_connected_sources()
+    if not connected['ghl'] and not connected['snowflake']:
+        return evaluate_compliance({}, connected, inactive_days=inactive_days)
+
+    datasets, errors, skipped = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        snowflake_passcode=snowflake_passcode,
+        limit_per_entity=limit_per_entity,
+    )
+    email_cfg = load_email_settings()
+    threshold = email_cfg.get('inactive_days') or inactive_days
+    result = evaluate_compliance(datasets, connected, inactive_days=threshold)
+    result['errors'] = errors or None
+    result['skipped'] = skipped or None
+    hipaa_manager.log_audit_event('compliance_evaluated', {
+        'score': result.get('compliance_score'),
+        'findings': len(result.get('findings') or []),
+        'recommendations': result.get('recommendation_count', 0),
+        'timestamp': datetime.utcnow().isoformat(),
+    })
     return result
 
 

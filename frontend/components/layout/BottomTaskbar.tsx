@@ -1,11 +1,12 @@
 'use client';
 
-import { Cable, Mail, X } from 'lucide-react';
+import { Cable, Mail, ShieldCheck, X } from 'lucide-react';
 import { useState } from 'react';
 import ConnectorsPanel from '@/components/panels/ConnectorsPanel';
+import CompliancePanel from '@/components/panels/CompliancePanel';
 import EmailPanel from '@/components/panels/EmailPanel';
 
-export type TaskbarPanel = 'connectors' | 'email' | null;
+export type TaskbarPanel = 'connectors' | 'email' | 'compliance' | null;
 
 interface BottomTaskbarProps {
   activePanel: TaskbarPanel;
@@ -15,7 +16,14 @@ interface BottomTaskbarProps {
 const ITEMS = [
   { id: 'connectors' as const, label: 'DB Connectors', icon: Cable },
   { id: 'email' as const, label: 'Email Follow-up', icon: Mail },
+  { id: 'compliance' as const, label: 'Compliance', icon: ShieldCheck },
 ];
+
+const PANEL_TITLES: Record<Exclude<TaskbarPanel, null>, string> = {
+  connectors: 'DB Connectors',
+  email: 'Email Follow-up Campaign',
+  compliance: 'Compliance & Service Evaluation',
+};
 
 export default function BottomTaskbar({
   activePanel,
@@ -47,7 +55,7 @@ export default function BottomTaskbar({
           <div className="flex max-h-[min(70vh,640px)] flex-col border-t border-slate-600 bg-slate-950 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
               <h2 className="text-sm font-semibold text-slate-200">
-                {activePanel === 'connectors' ? 'DB Connectors' : 'Email Follow-up Campaign'}
+                {PANEL_TITLES[activePanel]}
               </h2>
               <button
                 type="button"
@@ -60,11 +68,11 @@ export default function BottomTaskbar({
             <div className="flex-1 overflow-y-auto px-5 py-4">
               {activePanel === 'connectors' && <ConnectorsPanel />}
               {activePanel === 'email' && <EmailPanel />}
+              {activePanel === 'compliance' && <CompliancePanel />}
             </div>
           </div>
         )}
 
-        {/* Windows-style taskbar strip */}
         <div
           className={`flex items-center justify-center border-t border-slate-600 bg-slate-900/95 backdrop-blur transition-all duration-200 ${
             expanded ? 'h-12' : 'h-2'
@@ -81,7 +89,7 @@ export default function BottomTaskbar({
                 type="button"
                 onClick={() => toggle(id)}
                 title={label}
-                className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm transition ${
+                className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition ${
                   activePanel === id
                     ? 'bg-indigo-600 text-white shadow-inner'
                     : 'text-slate-300 hover:bg-slate-700 hover:text-white'

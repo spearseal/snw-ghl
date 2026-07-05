@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BarChart3,
+  ClipboardList,
   Loader2,
   RefreshCw,
   Users,
@@ -12,10 +13,12 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import KpiCard, { KpiData } from '@/components/dashboard/KpiCard';
+import CeoTaskList, { CeoTask } from '@/components/dashboard/CeoTaskList';
 import { apiFetch, getToken } from '@/lib/api';
 
 interface InsightsResponse {
   kpis: KpiData[];
+  ceo_tasks?: CeoTask[];
   followup_candidate_count?: number;
   connected_sources?: Record<string, boolean>;
   summary?: {
@@ -170,6 +173,17 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
+          <div className="mb-8 rounded-2xl border border-indigo-800/40 bg-gradient-to-br from-indigo-950/40 to-slate-900/60 p-6">
+            <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-indigo-200">
+              <ClipboardList className="h-4 w-4" />
+              Top 5 tasks for medspa CEOs
+            </h2>
+            <p className="mb-4 text-xs text-slate-500">
+              Prioritized from your connected GoHighLevel and Snowflake patient data.
+            </p>
+            <CeoTaskList tasks={insights?.ceo_tasks || []} />
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {(insights?.kpis || []).map((kpi) => (
               <KpiCard key={kpi.key} kpi={kpi} />
@@ -256,6 +270,9 @@ export default function DashboardPage() {
                 <p className="flex items-center gap-2">
                   <MessageSquare className="h-3.5 w-3.5" />
                   GHL or SMTP email delivery
+                </p>
+                <p className="flex items-center gap-2 text-emerald-400/80">
+                  Open Compliance in bottom taskbar for service audit
                 </p>
               </div>
             </div>
