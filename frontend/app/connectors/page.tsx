@@ -35,6 +35,12 @@ const SNOWFLAKE_COMMON_FIELDS = [
   { key: 'database', label: 'Database', required: false },
   { key: 'schema', label: 'Schema', required: false },
   { key: 'role', label: 'Role', required: false },
+  {
+    key: 'custom_tables',
+    label: 'Tables to query (comma-separated)',
+    required: false,
+    placeholder: 'testtable',
+  },
 ];
 
 const SNOWFLAKE_PASSWORD_FIELDS = [

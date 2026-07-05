@@ -360,6 +360,13 @@ export default function Home() {
                     .join(', ')}
                 </p>
               )}
+              {response.load_errors && Object.keys(response.load_errors).length > 0 && (
+                <p className="mt-2 whitespace-pre-wrap text-xs text-amber-300/90">
+                  {Object.entries(response.load_errors)
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join('\n')}
+                </p>
+              )}
             </div>
 
             {response.results.map((r, i) => (

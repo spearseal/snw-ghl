@@ -161,6 +161,19 @@ class QueryEngine:
             score += idf * (tf * (k1 + 1)) / denom
         return score
 
+    def _count_summary(self, sources: Optional[List[str]] = None) -> Optional[str]:
+        active_sources = sources or self.get_indexed_sources()
+        parts: List[str] = []
+        total = 0
+        for source in active_sources:
+            for entity, count in (self.record_counts.get(source) or {}).items():
+                if count:
+                    total += count
+                    parts.append(f'{count} in {entity}')
+        if not parts:
+            return None
+        return f'Total records in memory: {total} ({", ".join(parts)})'
+
     def query(
         self,
         question: str,
@@ -207,6 +220,20 @@ class QueryEngine:
                 'indexed_sources': self.get_indexed_sources(),
             }
 
+        count_answer = None
+        if re.search(r'\b(how many|total|count|number of)\b', question, re.I):
+            count_answer = self._count_summary(sources)
+            if count_answer and re.search(
+                r'\b(customers?|contacts?|records?|rows?|entries)\b', question, re.I
+            ):
+                return {
+                    'answer': count_answer,
+                    'results': [],
+                    'total_chunks': len(self.chunks),
+                    'searched_sources': sources or self.get_indexed_sources(),
+                    'indexed_sources': self.get_indexed_sources(),
+                }
+
         query_tokens = _tokenize(question)
         scored = [
             (self._bm25_score(query_tokens, chunk), chunk)
@@ -242,9 +269,11 @@ class QueryEngine:
                 f"Top match: {source_labels.get(results[0]['source'], results[0]['source'])} "
                 f"/ {results[0]['entity']}."
             )
+            if count_answer:
+                answer = f'{count_answer}. {answer}'
         else:
             searched = ', '.join(sources) if sources else 'connected sources'
-            answer = f'No matching records found in {searched} for your question.'
+            answer = count_answer or f'No matching records found in {searched} for your question.'
 
         return {
             'answer': answer,

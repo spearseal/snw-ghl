@@ -1,9 +1,10 @@
 """
 Snowflake Data Reader
-Reads GHL data back from Snowflake, decrypting PHI fields for authorized queries
+Reads configured Snowflake tables and decrypts PHI fields where applicable.
 """
 import logging
-from typing import Dict, List, Any, Optional
+import re
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import snowflake.connector
 from config import settings
@@ -13,11 +14,11 @@ from snowflake_auth import snowflake_connect
 
 class SnowflakeReader:
     """
-    Read-only access to the GHL tables stored in Snowflake.
-    Decrypts PHI fields via the HIPAA compliance manager and logs every access.
+    Read-only access to Snowflake tables.
+    Uses custom_tables from config when set, otherwise default GHL sync tables.
     """
 
-    TABLES = {
+    GHL_TABLES = {
         'contacts': 'ghl_contacts',
         'conversations': 'ghl_conversations',
         'opportunities': 'ghl_opportunities',
@@ -29,12 +30,31 @@ class SnowflakeReader:
         'opportunities': ['title', 'description'],
     }
 
+    GENERIC_PHI_FIELDS = [
+        'name', 'phone', 'address', 'email', 'service',
+        'firstname', 'lastname', 'body', 'description',
+    ]
+
     def __init__(self, config: Optional[Dict[str, str]] = None):
         self.config = config or {}
         self.connection = None
         self.cursor = None
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(getattr(logging, settings.log_level, logging.INFO))
+
+    @staticmethod
+    def _parse_custom_tables(config: Dict[str, str]) -> List[str]:
+        raw = (config.get('custom_tables') or settings.snowflake_custom_tables or '').strip()
+        if not raw:
+            return []
+        return [t.strip() for t in raw.split(',') if t.strip()]
+
+    def tables_to_fetch(self) -> Dict[str, str]:
+        """Return entity_key -> table_name mapping for this connection."""
+        custom = self._parse_custom_tables(self.config)
+        if custom:
+            return {table: table for table in custom}
+        return dict(self.GHL_TABLES)
 
     def connect(self, passcode: Optional[str] = None):
         """Establish connection to Snowflake using the provided config or .env defaults"""
@@ -47,6 +67,7 @@ class SnowflakeReader:
             hipaa_manager.log_audit_event('snowflake_reader_connection', {
                 'database': database,
                 'schema': schema,
+                'tables': list(self.tables_to_fetch().values()),
                 'timestamp': datetime.utcnow().isoformat(),
             })
         except Exception as e:
@@ -66,66 +87,67 @@ class SnowflakeReader:
         self.cursor = None
         self.connection = None
 
+    def _phi_fields_for(self, entity_type: str) -> List[str]:
+        return self.PHI_FIELDS.get(entity_type, self.GENERIC_PHI_FIELDS)
+
     def _decrypt_row(self, row: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
         """Decrypt PHI fields in a row; leave non-decryptable values untouched"""
         decrypted = dict(row)
-        for field in self.PHI_FIELDS.get(entity_type, []):
+        row_keys_lower = {str(k).lower() for k in decrypted}
+        for field in self._phi_fields_for(entity_type):
+            if field.lower() not in row_keys_lower:
+                continue
             value = decrypted.get(field) or decrypted.get(field.upper())
             key = field if field in decrypted else field.upper()
             if value:
                 try:
                     decrypted[key] = hipaa_manager.decrypt_data(str(value))
                 except Exception:
-                    # Value may not be encrypted (legacy rows); keep as-is
                     pass
         return decrypted
 
-    def fetch_entity(self, entity_type: str, limit: int = 500) -> List[Dict[str, Any]]:
-        """
-        Fetch rows for an entity type from Snowflake with PHI decrypted.
-
-        Args:
-            entity_type: One of contacts, conversations, opportunities
-            limit: Max rows to fetch
-
-        Returns:
-            List of row dictionaries
-        """
-        table = self.TABLES.get(entity_type)
-        if not table:
-            raise ValueError(f"Unknown entity type: {entity_type}")
+    def fetch_table(self, table_name: str, limit: int = 500) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Fetch rows from a Snowflake table by name."""
+        if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_$]*', table_name):
+            return [], f'Invalid table name: {table_name}'
 
         try:
-            self.cursor.execute(f'SELECT * FROM "{table}" LIMIT %s', (limit,))
+            self.cursor.execute(f'SELECT * FROM "{table_name}" LIMIT %s', (limit,))
             rows = self.cursor.fetchall()
         except Exception as e:
-            self.logger.warning(f"Could not read {table}: {e}")
-            return []
+            self.logger.warning(f"Could not read {table_name}: {e}")
+            return [], f'{table_name}: {e}'
 
         hipaa_manager.log_audit_event('snowflake_data_read', {
-            'table': table,
+            'table': table_name,
             'rows': len(rows),
             'timestamp': datetime.utcnow().isoformat(),
         })
 
-        return [self._decrypt_row(row, entity_type) for row in rows]
+        return [self._decrypt_row(row, table_name) for row in rows], None
 
-    def fetch_all(self, limit_per_entity: int = 500) -> Dict[str, List[Dict[str, Any]]]:
-        """Fetch all GHL entities from Snowflake"""
-        return {
-            entity: self.fetch_entity(entity, limit_per_entity)
-            for entity in self.TABLES
-        }
+    def fetch_entity(self, entity_type: str, limit: int = 500) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Fetch rows for a configured entity (GHL entity key or custom table name)."""
+        tables = self.tables_to_fetch()
+        table = tables.get(entity_type)
+        if not table:
+            raise ValueError(f"Unknown entity type: {entity_type}")
+        return self.fetch_table(table, limit)
+
+    def fetch_all(self, limit_per_entity: int = 500) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, str]]:
+        """Fetch all configured tables. Returns (data, table_errors)."""
+        data: Dict[str, List[Dict[str, Any]]] = {}
+        errors: Dict[str, str] = {}
+        for entity, table in self.tables_to_fetch().items():
+            rows, err = self.fetch_table(table, limit_per_entity)
+            data[entity] = rows
+            if err:
+                errors[entity] = err
+        return data, errors
 
     def run_query(self, sql: str) -> List[Dict[str, Any]]:
         """
         Run a read-only SQL query. Rejects any statement that is not a SELECT.
-
-        Args:
-            sql: SQL statement
-
-        Returns:
-            List of row dictionaries
         """
         stripped = sql.strip().rstrip(';').strip()
         if not stripped.lower().startswith('select'):
@@ -139,19 +161,17 @@ class SnowflakeReader:
         self.cursor.execute(stripped)
         rows = self.cursor.fetchall()
 
-        # Attempt to decrypt any PHI fields present in the result set
         decrypted_rows = []
         for row in rows:
             decrypted = dict(row)
-            for entity_type, fields in self.PHI_FIELDS.items():
-                for field in fields:
-                    key = field if field in decrypted else field.upper()
-                    value = decrypted.get(key)
-                    if value:
-                        try:
-                            decrypted[key] = hipaa_manager.decrypt_data(str(value))
-                        except Exception:
-                            pass
+            for field in self.GENERIC_PHI_FIELDS:
+                key = field if field in decrypted else field.upper()
+                value = decrypted.get(key)
+                if value:
+                    try:
+                        decrypted[key] = hipaa_manager.decrypt_data(str(value))
+                    except Exception:
+                        pass
             decrypted_rows.append(decrypted)
 
         return decrypted_rows

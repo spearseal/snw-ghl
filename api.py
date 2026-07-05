@@ -112,7 +112,28 @@ def _fetch_datasets(
             reader = SnowflakeReader(sf_config)
             try:
                 reader.connect(passcode=snowflake_passcode)
-                datasets['snowflake'] = reader.fetch_all(limit_per_entity)
+                snowflake_data, table_errors = reader.fetch_all(limit_per_entity)
+                datasets['snowflake'] = snowflake_data
+                for entity, msg in table_errors.items():
+                    errors[f'snowflake.{entity}'] = msg
+                total_rows = sum(len(rows) for rows in snowflake_data.values())
+                if total_rows == 0 and not table_errors:
+                    custom = (sf_config.get('custom_tables') or '').strip()
+                    table_list = (
+                        custom
+                        if custom
+                        else ', '.join(SnowflakeReader.GHL_TABLES.values())
+                    )
+                    errors['snowflake'] = (
+                        f'Connected but all tables are empty ({table_list}). '
+                        'Add rows in Snowflake or set custom_tables on the connection.'
+                    )
+                elif total_rows == 0 and table_errors:
+                    expected = ', '.join(reader.tables_to_fetch().values())
+                    errors['snowflake'] = (
+                        'Connected but could not read tables. Expected in your '
+                        f'database/schema: {expected}. See snowflake.<table> errors for details.'
+                    )
             except Exception as e:
                 logger.error(f"Snowflake fetch failed: {e}")
                 msg = str(e)
@@ -269,6 +290,19 @@ def query(req: QueryRequest, user: str = Depends(get_current_user)):
         elif load_errors and not result['results']:
             failed = '; '.join(f'{k}: {v}' for k, v in load_errors.items())
             result['answer'] = f'Could not load data into memory. {failed}'
+        elif (
+            not result['results']
+            and connected.get('snowflake')
+            and len(engine.chunks) == 0
+        ):
+            sf_config = get_active_config('snowflake') or {}
+            reader = SnowflakeReader(sf_config)
+            expected = ', '.join(reader.tables_to_fetch().values())
+            result['answer'] = (
+                f'Snowflake is connected but no rows were loaded from: {expected}. '
+                'Edit the Snowflake connection and set Tables to query (e.g. testtable), '
+                'then Refresh Memory.'
+            )
         return result
     except Exception as e:
         logger.error(f"Query failed: {e}")

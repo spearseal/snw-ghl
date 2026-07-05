@@ -213,6 +213,7 @@ def _seed_defaults():
             'database': settings.snowflake_database,
             'schema': settings.snowflake_schema,
             'role': settings.snowflake_role or '',
+            'custom_tables': settings.snowflake_custom_tables or '',
             'auth_method': 'key_pair' if uses_key else 'password',
             'password': '' if uses_key else settings.snowflake_password,
             'passcode': '' if uses_key else (settings.snowflake_passcode or ''),

@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     snowflake_private_key_passphrase: str = Field(
         default="", env="SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"
     )
+    snowflake_custom_tables: str = Field(default="", env="SNOWFLAKE_CUSTOM_TABLES")
     
     # Security Configuration
     encryption_key: str = Field(default="", env="ENCRYPTION_KEY")
