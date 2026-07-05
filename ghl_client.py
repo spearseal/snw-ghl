@@ -270,6 +270,43 @@ class GHLClient:
         
         return opportunities
     
+    def send_email(
+        self,
+        contact_id: str,
+        subject: str,
+        html: str,
+        from_email: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Send an email to a contact via GHL Conversations API."""
+        if not contact_id:
+            raise ValueError('contact_id is required')
+        if not subject.strip():
+            raise ValueError('subject is required')
+        if not html.strip():
+            raise ValueError('html body is required')
+
+        payload: Dict[str, Any] = {
+            'type': 'Email',
+            'contactId': contact_id,
+            'subject': subject,
+            'html': html,
+        }
+        if from_email:
+            payload['emailFrom'] = from_email
+
+        self.logger.info(f"Sending email to GHL contact {contact_id}")
+        response = self._make_request(
+            'POST',
+            '/conversations/messages',
+            data=payload,
+            api_version=GHL_CONVERSATIONS_API_VERSION,
+        )
+        hipaa_manager.log_audit_event('ghl_email_sent', {
+            'contact_id': hipaa_manager.mask_sensitive_data(contact_id),
+            'timestamp': datetime.utcnow().isoformat(),
+        })
+        return response
+
     def get_all_data(self) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, str]]:
         """
         Retrieve all relevant data from GoHighLevel

@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
-import Header from '@/components/Header';
+import { Suspense } from 'react';
+import AppShell from '@/components/layout/AppShell';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'GHL + Snowflake HIPAA Query',
+  title: 'GHL + Snowflake Marketing Insights',
   description:
-    'Query GoHighLevel and Snowflake data with HIPAA-compliant PHI masking',
+    'Marketing insights dashboard with GoHighLevel and Snowflake data, HIPAA-compliant',
 };
 
 export default function RootLayout({
@@ -16,8 +17,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Header />
-        {children}
+        <Suspense fallback={<div className="min-h-screen bg-slate-950" />}>
+          <AppShell>{children}</AppShell>
+        </Suspense>
       </body>
     </html>
   );

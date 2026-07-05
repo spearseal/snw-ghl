@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     )
     snowflake_custom_tables: str = Field(default="", env="SNOWFLAKE_CUSTOM_TABLES")
 
+    # SMTP fallback for email follow-up campaigns
+    smtp_host: str = Field(default="", env="SMTP_HOST")
+    smtp_port: int = Field(default=587, env="SMTP_PORT")
+    smtp_user: str = Field(default="", env="SMTP_USER")
+    smtp_password: str = Field(default="", env="SMTP_PASSWORD")
+    email_from: str = Field(default="", env="EMAIL_FROM")
+
     # Optional LLM for Snowflake agent (text -> SQL). Falls back to heuristics if unset.
     groq_api_key: str = Field(default="", env="GROQ_API_KEY")
     groq_model: str = Field(default="llama-3.3-70b-versatile", env="GROQ_MODEL")

@@ -1,111 +1,30 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, RefreshCw, Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  BarChart3,
+  Loader2,
+  RefreshCw,
+  Users,
+  TrendingUp,
+  MessageSquare,
+  AlertCircle,
+} from 'lucide-react';
+import KpiCard, { KpiData } from '@/components/dashboard/KpiCard';
 import { apiFetch, getToken } from '@/lib/api';
 
-interface QueryResult {
-  score: number;
-  source: string;
-  entity: string;
-  record_id: string;
-  text: string;
-}
-
-interface QueryResponse {
-  answer: string;
-  results: QueryResult[];
-  total_chunks: number;
-  searched_sources?: string[];
-  indexed_sources?: string[];
+interface InsightsResponse {
+  kpis: KpiData[];
+  followup_candidate_count?: number;
   connected_sources?: Record<string, boolean>;
-  load_errors?: Record<string, string>;
-}
-
-interface AgentResponse {
-  answer: string;
-  sql: string | null;
-  reasoning: string;
-  method?: string;
-  columns?: string[];
-  row_count: number;
-  rows: Record<string, unknown>[];
-  datasource?: string;
-  schema_summary?: {
-    database: string;
-    schema: string;
-    table_count: number;
-    tables: string[];
+  summary?: {
+    ghl?: Record<string, number>;
+    snowflake?: Record<string, number>;
   };
-}
-
-interface SmartQueryResponse {
-  answer: string;
-  connected_sources?: Record<string, boolean>;
-  indexed_sources?: string[];
-  sources_queried?: string[];
-  load_errors?: Record<string, string>;
-  load_skipped?: Record<string, string>;
-  total_chunks?: number;
-  results_by_source: {
-    snowflake?: AgentResponse;
-    ghl?: QueryResponse & { datasource?: string };
-  };
-}
-
-interface SchemaResponse {
-  database: string;
-  schema: string;
-  table_count: number;
-  tables: Array<{
-    name: string;
-    row_count?: number;
-    columns: Array<{ name: string; type: string }>;
-  }>;
-}
-
-interface HealthResponse {
-  status: string;
-  indexed_chunks: number;
-  last_indexed: string | null;
-  connected_sources?: Record<string, boolean>;
-  indexed_sources?: string[];
-  source_chunks?: Record<string, number>;
-  snowflake_requires_passcode?: boolean;
-}
-
-interface Connection {
-  id: string;
-  type: 'snowflake' | 'ghl';
-  status: string;
-  snowflake_requires_passcode?: boolean;
-  snowflake_auth_method?: 'key_pair' | 'password';
-}
-
-function formatRefreshError(data: {
-  detail?: string | {
-    message?: string;
-    errors?: Record<string, string>;
-    skipped?: Record<string, string>;
-    hint?: string;
-  };
-}): string {
-  const detail = data.detail;
-  if (typeof detail === 'string') return detail;
-  const parts: string[] = [detail?.message || 'Index refresh failed'];
-  if (detail?.errors) {
-    for (const [source, msg] of Object.entries(detail.errors)) {
-      parts.push(`${source}: ${msg}`);
-    }
-  }
-  if (detail?.skipped) {
-    for (const [source, msg] of Object.entries(detail.skipped)) {
-      parts.push(`${source} (skipped): ${msg}`);
-    }
-  }
-  if (detail?.hint) parts.push(detail.hint);
-  return parts.join('\n');
+  errors?: Record<string, string>;
+  message?: string;
+  generated_at?: string;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -113,52 +32,29 @@ const SOURCE_LABELS: Record<string, string> = {
   ghl: 'GoHighLevel',
 };
 
-export default function Home() {
+export default function DashboardPage() {
   const router = useRouter();
-  const [question, setQuestion] = useState('');
-  const [maskPhi, setMaskPhi] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [insights, setInsights] = useState<InsightsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [response, setResponse] = useState<QueryResponse | null>(null);
-  const [agentResponse, setAgentResponse] = useState<AgentResponse | null>(null);
-  const [schemaInfo, setSchemaInfo] = useState<SchemaResponse | null>(null);
-  const [queryMode, setQueryMode] = useState<'smart' | 'memory'>('smart');
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [connections, setConnections] = useState<Connection[]>([]);
   const [snowflakePasscode, setSnowflakePasscode] = useState('');
-  const [smartResponse, setSmartResponse] = useState<SmartQueryResponse | null>(null);
 
-  const snowflakeConnected = connections.some(
-    (c) => c.type === 'snowflake' && c.status === 'connected'
-  );
-  const snowflakeNeedsMfa =
-    health?.snowflake_requires_passcode ??
-    connections.some(
-      (c) =>
-        c.type === 'snowflake' &&
-        c.status === 'connected' &&
-        c.snowflake_requires_passcode !== false
-    );
-  const ghlConnected = connections.some(
-    (c) => c.type === 'ghl' && c.status === 'connected'
-  );
-
-  const fetchHealth = useCallback(async () => {
+  const loadInsights = useCallback(async (passcode?: string) => {
+    setError(null);
     try {
-      const res = await apiFetch('/api/health');
-      if (res.ok) setHealth(await res.json());
-    } catch {
-      setHealth(null);
-    }
-  }, []);
-
-  const fetchConnections = useCallback(async () => {
-    try {
-      const res = await apiFetch('/api/connections');
-      if (res.ok) setConnections(await res.json());
-    } catch {
-      setConnections([]);
+      const params = new URLSearchParams({ limit_per_entity: '500', inactive_days: '90' });
+      if (passcode?.trim()) {
+        params.set('snowflake_passcode', passcode.trim());
+      }
+      const res = await apiFetch(`/api/insights?${params.toString()}`, {}, 120_000);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || 'Failed to load insights');
+      }
+      setInsights(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load insights');
     }
   }, []);
 
@@ -167,592 +63,205 @@ export default function Home() {
       router.push('/login');
       return;
     }
-    fetchHealth();
-    fetchConnections();
-  }, [router, fetchHealth, fetchConnections]);
-
-  const refreshIndex = async () => {
-    setRefreshing(true);
-    setError(null);
-    try {
-      if (snowflakeConnected && snowflakeNeedsMfa && !snowflakePasscode.trim()) {
-        throw new Error(
-          'Enter your current Snowflake MFA code (6 digits from your authenticator app).'
-        );
-      }
-      const res = await apiFetch('/api/index/refresh', {
-        method: 'POST',
-        body: JSON.stringify({
-          snowflake_passcode: snowflakePasscode.trim() || undefined,
-          limit_per_entity: 500,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(formatRefreshError(data));
-      }
-      setSnowflakePasscode('');
-      await fetchHealth();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Index refresh failed');
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  const runQuery = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!question.trim()) return;
-
-    if (queryMode === 'smart') {
-      if (!snowflakeConnected && !ghlConnected) {
-        setError(
-          'No data sources connected. Go to DB Connectors and test your Snowflake and/or GoHighLevel connection first.'
-        );
-        return;
-      }
-      if (snowflakeConnected && snowflakeNeedsMfa && !snowflakePasscode.trim()) {
-        setError('Enter your current Snowflake MFA code for password-based auth.');
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      setResponse(null);
-      setAgentResponse(null);
-      setSmartResponse(null);
-      try {
-        const res = await apiFetch('/api/smart/query', {
-          method: 'POST',
-          body: JSON.stringify({
-            question,
-            limit: 100,
-            top_k: 5,
-            mask_phi: maskPhi,
-            load_fresh: true,
-            limit_per_entity: 500,
-            snowflake_passcode: snowflakePasscode.trim() || undefined,
-          }),
-        }, 120_000);
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(
-            typeof data.detail === 'string' ? data.detail : 'Smart query failed'
-          );
-        }
-        setSmartResponse(data);
-        setSnowflakePasscode('');
-        await fetchHealth();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Smart query failed');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    if (!snowflakeConnected && !ghlConnected) {
-      setError(
-        'No data sources connected. Go to DB Connectors and test your Snowflake and/or GoHighLevel connection first.'
-      );
-      return;
-    }
-
-    if (snowflakeConnected && snowflakeNeedsMfa && !snowflakePasscode.trim()) {
-      setError(
-        'Enter your current Snowflake MFA code — required for password-based auth.'
-      );
-      return;
-    }
-
     setLoading(true);
-    setError(null);
-    setResponse(null);
-    setAgentResponse(null);
-    setSmartResponse(null);
-    try {
-      const res = await apiFetch('/api/query', {
-        method: 'POST',
-        body: JSON.stringify({
-          question,
-          top_k: 5,
-          mask_phi: maskPhi,
-          load_fresh: true,
-          limit_per_entity: 500,
-          snowflake_passcode: snowflakePasscode.trim() || undefined,
-        }),
-      }, 120_000);
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          typeof data.detail === 'string' ? data.detail : 'Query failed'
-        );
-      }
-      setResponse(data);
-      setSnowflakePasscode('');
-      await fetchHealth();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Query failed');
-    } finally {
-      setLoading(false);
-    }
+    loadInsights().finally(() => setLoading(false));
+  }, [router, loadInsights]);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    await loadInsights(snowflakePasscode);
+    setSnowflakePasscode('');
+    setRefreshing(false);
   };
 
-  const loadSchema = async () => {
-    if (!snowflakeConnected) {
-      setError('Connect Snowflake first to analyze schema.');
-      return;
-    }
-    if (snowflakeNeedsMfa && !snowflakePasscode.trim()) {
-      setError('Enter MFA code to analyze schema.');
-      return;
-    }
-    setError(null);
-    try {
-      const params = snowflakePasscode.trim()
-        ? `?snowflake_passcode=${encodeURIComponent(snowflakePasscode.trim())}`
-        : '';
-      const res = await apiFetch(`/api/snowflake/schema${params}`);
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          typeof data.detail === 'string' ? data.detail : 'Schema discovery failed'
-        );
-      }
-      setSchemaInfo(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Schema discovery failed');
-    }
-  };
-
-  const connectedList: string[] = [];
-  if (snowflakeConnected) connectedList.push('Snowflake');
-  if (ghlConnected) connectedList.push('GoHighLevel');
+  const connected = insights?.connected_sources || {};
+  const connectedNames = Object.entries(connected)
+    .filter(([, v]) => v)
+    .map(([k]) => SOURCE_LABELS[k] || k);
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold">Query Console</h1>
-        <p className="text-sm text-slate-400">
-          Smart Query checks every connected datasource, refreshes memory, and labels
-          results by source (Snowflake live SQL + GoHighLevel memory). Memory Search
-          searches pre-loaded chunks only.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setQueryMode('smart')}
-            className={`rounded-lg px-3 py-1.5 text-sm ${
-              queryMode === 'smart'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-slate-800 text-slate-300'
-            }`}
-          >
-            Smart Query
-          </button>
-          <button
-            type="button"
-            onClick={() => setQueryMode('memory')}
-            className={`rounded-lg px-3 py-1.5 text-sm ${
-              queryMode === 'memory'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-slate-800 text-slate-300'
-            }`}
-          >
-            Memory Search
-          </button>
-          {snowflakeConnected && queryMode === 'smart' && (
-            <button
-              type="button"
-              onClick={loadSchema}
-              className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700"
-            >
-              Analyze Schema
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Connected sources + memory status */}
-      <div className="mb-6 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-slate-500">Connected:</span>
-              {connectedList.length > 0 ? (
-                connectedList.map((name) => (
-                  <span
-                    key={name}
-                    className="rounded-full border border-emerald-700/50 bg-emerald-900/30 px-2.5 py-0.5 text-xs text-emerald-300"
-                  >
-                    {name}
-                  </span>
-                ))
-              ) : (
-                <span className="text-amber-400 text-xs">None — connect in DB Connectors</span>
-              )}
-            </div>
-            <div className="text-sm text-slate-300">
-              {health ? (
-                <>
-                  <span className="font-medium">{health.indexed_chunks}</span> chunks
-                  in memory
-                  {health.indexed_sources && health.indexed_sources.length > 0 && (
-                    <span className="text-slate-500">
-                      {' '}
-                      ({health.indexed_sources.map((s) => SOURCE_LABELS[s] || s).join(', ')})
-                    </span>
-                  )}
-                  {health.last_indexed && (
-                    <span className="text-slate-500">
-                      {' '}
-                      · updated {new Date(health.last_indexed + 'Z').toLocaleString()}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span className="text-amber-400">Backend unreachable</span>
-              )}
-            </div>
+    <div className="mx-auto max-w-7xl">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="mb-1 flex items-center gap-2 text-indigo-400">
+            <BarChart3 className="h-5 w-5" />
+            <span className="text-xs font-medium uppercase tracking-wider">
+              Marketing Intelligence
+            </span>
           </div>
+          <h1 className="text-2xl font-bold text-slate-50">Insights Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-400">
+            KPI cards from connected GoHighLevel and Snowflake data sources.
+            {insights?.generated_at && (
+              <span className="text-slate-500">
+                {' '}
+                · Updated {new Date(insights.generated_at).toLocaleString()}
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {connected.snowflake && (
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={snowflakePasscode}
+              onChange={(e) => setSnowflakePasscode(e.target.value.replace(/\D/g, ''))}
+              placeholder="Snowflake MFA"
+              className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs"
+            />
+          )}
           <button
-            onClick={refreshIndex}
-            disabled={refreshing || (!snowflakeConnected && !ghlConnected)}
-            className="flex shrink-0 items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
-            title="Manually reload connected sources into memory"
+            type="button"
+            onClick={refresh}
+            disabled={refreshing || loading}
+            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
           >
             {refreshing ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-            Refresh Memory
+            Refresh insights
           </button>
         </div>
-        {snowflakeConnected && snowflakeNeedsMfa && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
-            <label htmlFor="snowflake-mfa" className="text-xs text-slate-400">
-              Snowflake MFA code
-            </label>
-            <input
-              id="snowflake-mfa"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              value={snowflakePasscode}
-              onChange={(e) => setSnowflakePasscode(e.target.value.replace(/\D/g, ''))}
-              placeholder="6-digit code"
-              className="w-32 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 outline-none focus:border-indigo-500"
-            />
-            <span className="text-xs text-slate-500">
-              Required to load Snowflake data (expires every ~30s)
+      </div>
+
+      <div className="mb-6 flex flex-wrap gap-2">
+        <span className="text-xs text-slate-500">Connected:</span>
+        {connectedNames.length > 0 ? (
+          connectedNames.map((name) => (
+            <span
+              key={name}
+              className="rounded-full border border-emerald-700/50 bg-emerald-900/30 px-2.5 py-0.5 text-xs text-emerald-300"
+            >
+              {name}
             </span>
-          </div>
-        )}
-        {snowflakeConnected && !snowflakeNeedsMfa && (
-          <p className="mt-3 border-t border-slate-800 pt-3 text-xs text-emerald-400">
-            Snowflake key-pair auth — no MFA code needed
-          </p>
+          ))
+        ) : (
+          <span className="text-xs text-amber-400">
+            None — hover the bottom bar to open DB Connectors
+          </span>
         )}
       </div>
 
-      {/* Query input */}
-      <form onSubmit={runQuery} className="mb-6">
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder={
-                queryMode === 'smart'
-                  ? 'e.g. show contacts and total customers from connected sources'
-                  : 'e.g. Which contacts have open opportunities?'
-              }
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 py-3 pl-11 pr-4 text-slate-100 placeholder-slate-500 outline-none transition focus:border-indigo-500"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading || !question.trim()}
-            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 font-medium text-white transition hover:bg-indigo-500 disabled:opacity-50"
-          >
-            {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Search className="h-5 w-5" />
-            )}
-            Query
-          </button>
+      {error && (
+        <div className="mb-6 rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+          {error}
         </div>
-        <label className="mt-3 flex items-center gap-2 text-sm text-slate-400">
-          <input
-            type="checkbox"
-            checked={maskPhi}
-            onChange={(e) => setMaskPhi(e.target.checked)}
-            className="h-4 w-4 rounded border-slate-600 bg-slate-800 accent-indigo-500"
-          />
-          Mask PHI in results (recommended)
-        </label>
-      </form>
+      )}
 
-      {/* Output section */}
-      <section aria-label="Output">
-        {error && (
-          <div className="mb-4 whitespace-pre-wrap rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-            {error}
-          </div>
-        )}
+      {insights?.errors && Object.keys(insights.errors).length > 0 && (
+        <div className="mb-6 whitespace-pre-wrap rounded-xl border border-amber-800/50 bg-amber-950/30 px-4 py-3 text-xs text-amber-200">
+          {Object.entries(insights.errors)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join('\n')}
+        </div>
+      )}
 
-        {schemaInfo && queryMode === 'smart' && (
-          <div className="mb-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
-            <p className="mb-2 font-medium text-slate-200">
-              Schema {schemaInfo.database}.{schemaInfo.schema} — {schemaInfo.table_count}{' '}
-              table(s)
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {schemaInfo.tables.map((t) => (
-                <span
-                  key={t.name}
-                  className="rounded-full bg-slate-800 px-2.5 py-1 font-mono text-xs text-slate-400"
-                >
-                  {t.name}
-                  {t.row_count != null ? ` (${t.row_count})` : ''}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {smartResponse && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-indigo-800/50 bg-indigo-950/30 px-4 py-3">
-              <p className="text-sm font-medium text-indigo-200">{smartResponse.answer}</p>
-              {smartResponse.sources_queried && smartResponse.sources_queried.length > 0 && (
-                <p className="mt-1 text-xs text-indigo-300/70">
-                  Queried: {smartResponse.sources_queried.join(', ')}
-                </p>
-              )}
-              {smartResponse.load_errors && Object.keys(smartResponse.load_errors).length > 0 && (
-                <p className="mt-2 whitespace-pre-wrap text-xs text-amber-300/90">
-                  {Object.entries(smartResponse.load_errors)
-                    .map(([k, v]) => `${k}: ${v}`)
-                    .join('\n')}
-                </p>
-              )}
-            </div>
-
-            {smartResponse.results_by_source.snowflake && (
-              <div className="space-y-3 rounded-xl border border-sky-800/40 bg-sky-950/20 p-4">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-sky-900/40 px-2.5 py-1 text-xs uppercase tracking-wide text-sky-300">
-                    Snowflake
-                  </span>
-                  <span className="text-xs text-slate-500">Live SQL</span>
-                </div>
-                <p className="text-sm text-sky-100">
-                  {smartResponse.results_by_source.snowflake.answer}
-                </p>
-                {smartResponse.results_by_source.snowflake.reasoning && (
-                  <p className="text-xs text-sky-300/70">
-                    {smartResponse.results_by_source.snowflake.reasoning}
-                  </p>
-                )}
-                {smartResponse.results_by_source.snowflake.sql && (
-                  <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-emerald-300">
-                    {smartResponse.results_by_source.snowflake.sql}
-                  </pre>
-                )}
-                {smartResponse.results_by_source.snowflake.rows &&
-                  smartResponse.results_by_source.snowflake.rows.length > 0 && (
-                    <div className="overflow-x-auto rounded-xl border border-slate-800">
-                      <table className="min-w-full text-left text-sm text-slate-300">
-                        <thead className="bg-slate-900 text-xs uppercase text-slate-500">
-                          <tr>
-                            {Object.keys(smartResponse.results_by_source.snowflake.rows[0]).map(
-                              (col) => (
-                                <th key={col} className="px-4 py-2">
-                                  {col}
-                                </th>
-                              )
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {smartResponse.results_by_source.snowflake.rows.map((row, i) => (
-                            <tr key={i} className="border-t border-slate-800">
-                              {Object.keys(
-                                smartResponse.results_by_source.snowflake!.rows[0]
-                              ).map((col) => (
-                                <td key={col} className="px-4 py-2 font-mono text-xs">
-                                  {String(row[col] ?? '')}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-              </div>
-            )}
-
-            {smartResponse.results_by_source.ghl && (
-              <div className="space-y-3 rounded-xl border border-violet-800/40 bg-violet-950/20 p-4">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-violet-900/40 px-2.5 py-1 text-xs uppercase tracking-wide text-violet-300">
-                    GoHighLevel
-                  </span>
-                  <span className="text-xs text-slate-500">Memory search</span>
-                </div>
-                <p className="text-sm text-violet-100">
-                  {smartResponse.results_by_source.ghl.answer}
-                </p>
-                {smartResponse.results_by_source.ghl.results.map((r, i) => (
-                  <div
-                    key={i}
-                    className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
-                  >
-                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-                      <span className="rounded-full bg-indigo-900/40 px-2.5 py-1 text-indigo-300">
-                        GoHighLevel
-                      </span>
-                      <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-400">
-                        {r.entity}
-                      </span>
-                      <span className="ml-auto text-slate-500">
-                        relevance {r.score.toFixed(2)}
-                      </span>
-                    </div>
-                    <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-slate-300">
-                      {r.text}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {agentResponse && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-sky-800/50 bg-sky-950/30 px-4 py-3">
-              <p className="text-sm font-medium text-sky-200">{agentResponse.answer}</p>
-              <p className="mt-1 text-xs text-sky-300/70">{agentResponse.reasoning}</p>
-              {agentResponse.schema_summary && (
-                <p className="mt-1 text-xs text-sky-300/70">
-                  Analyzed {agentResponse.schema_summary.table_count} tables in{' '}
-                  {agentResponse.schema_summary.database}.
-                  {agentResponse.schema_summary.schema}
-                </p>
-              )}
-              {agentResponse.columns && agentResponse.columns.length > 0 && (
-                <p className="mt-1 text-xs text-sky-300/70">
-                  Columns: {agentResponse.columns.join(', ')}
-                </p>
-              )}
-            </div>
-            {agentResponse.sql && (
-              <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-emerald-300">
-                {agentResponse.sql}
-              </pre>
-            )}
-            {agentResponse.rows.length > 0 && (
-              <div className="overflow-x-auto rounded-xl border border-slate-800">
-                <table className="min-w-full text-left text-sm text-slate-300">
-                  <thead className="bg-slate-900 text-xs uppercase text-slate-500">
-                    <tr>
-                      {Object.keys(agentResponse.rows[0]).map((col) => (
-                        <th key={col} className="px-4 py-2">
-                          {col}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {agentResponse.rows.map((row, i) => (
-                      <tr key={i} className="border-t border-slate-800">
-                        {Object.keys(agentResponse.rows[0]).map((col) => (
-                          <td key={col} className="px-4 py-2 font-mono text-xs">
-                            {String(row[col] ?? '')}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {response && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-indigo-800/50 bg-indigo-950/30 px-4 py-3">
-              <p className="text-sm font-medium text-indigo-200">
-                {response.answer}
-              </p>
-              {response.searched_sources && response.searched_sources.length > 0 && (
-                <p className="mt-1 text-xs text-indigo-300/70">
-                  Searched:{' '}
-                  {response.searched_sources
-                    .map((s) => SOURCE_LABELS[s] || s)
-                    .join(', ')}
-                </p>
-              )}
-              {response.load_errors && Object.keys(response.load_errors).length > 0 && (
-                <p className="mt-2 whitespace-pre-wrap text-xs text-amber-300/90">
-                  {Object.entries(response.load_errors)
-                    .map(([k, v]) => `${k}: ${v}`)
-                    .join('\n')}
-                </p>
-              )}
-            </div>
-
-            {response.results.map((r, i) => (
-              <div
-                key={i}
-                className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
-              >
-                <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-                  <span
-                    className={`rounded-full px-2.5 py-1 uppercase tracking-wide ${
-                      r.source === 'snowflake'
-                        ? 'bg-sky-900/40 text-sky-300'
-                        : 'bg-indigo-900/40 text-indigo-300'
-                    }`}
-                  >
-                    {SOURCE_LABELS[r.source] || r.source}
-                  </span>
-                  <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-400">
-                    {r.entity}
-                  </span>
-                  {r.record_id && (
-                    <span className="rounded-full bg-slate-800 px-2.5 py-1 font-mono text-slate-500">
-                      id: {r.record_id}
-                    </span>
-                  )}
-                  <span className="ml-auto text-slate-500">
-                    relevance {r.score.toFixed(2)}
-                  </span>
-                </div>
-                <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-slate-300">
-                  {r.text}
-                </pre>
-              </div>
+      {loading ? (
+        <div className="flex justify-center py-24">
+          <Loader2 className="h-8 w-8 animate-spin text-indigo-400" />
+        </div>
+      ) : insights?.message && !insights.kpis?.length ? (
+        <div className="rounded-2xl border border-dashed border-slate-800 px-6 py-16 text-center text-slate-500">
+          {insights.message}
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {(insights?.kpis || []).map((kpi) => (
+              <KpiCard key={kpi.key} kpi={kpi} />
             ))}
           </div>
-        )}
 
-        {!response && !agentResponse && !smartResponse && !error && (
-          <div className="rounded-xl border border-dashed border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
-            {queryMode === 'smart'
-              ? 'Connect Snowflake and/or GoHighLevel, refresh memory, then ask a question across all connected sources.'
-              : 'Connect sources, refresh memory, then search indexed chunks.'}
+          <div className="mt-8 grid gap-4 lg:grid-cols-3">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5 lg:col-span-2">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-200">
+                <TrendingUp className="h-4 w-4 text-indigo-400" />
+                Source breakdown
+              </h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {insights?.summary?.ghl && (
+                  <div className="rounded-xl border border-violet-800/30 bg-violet-950/20 p-4">
+                    <p className="mb-3 text-xs font-medium uppercase tracking-wide text-violet-300">
+                      GoHighLevel
+                    </p>
+                    <ul className="space-y-2 text-sm text-slate-300">
+                      <li className="flex justify-between">
+                        <span>Contacts</span>
+                        <span>{insights.summary.ghl.contacts}</span>
+                      </li>
+                      <li className="flex justify-between">
+                        <span>Opportunities</span>
+                        <span>{insights.summary.ghl.opportunities}</span>
+                      </li>
+                      <li className="flex justify-between">
+                        <span>Conversations</span>
+                        <span>{insights.summary.ghl.conversations}</span>
+                      </li>
+                      <li className="flex justify-between text-amber-300">
+                        <span>90d no follow-up</span>
+                        <span>{insights.summary.ghl.inactive_no_followup}</span>
+                      </li>
+                    </ul>
+                  </div>
+                )}
+                {insights?.summary?.snowflake && (
+                  <div className="rounded-xl border border-sky-800/30 bg-sky-950/20 p-4">
+                    <p className="mb-3 text-xs font-medium uppercase tracking-wide text-sky-300">
+                      Snowflake
+                    </p>
+                    <ul className="space-y-2 text-sm text-slate-300">
+                      <li className="flex justify-between">
+                        <span>Contacts</span>
+                        <span>{insights.summary.snowflake.contacts}</span>
+                      </li>
+                      <li className="flex justify-between">
+                        <span>Opportunities</span>
+                        <span>{insights.summary.snowflake.opportunities}</span>
+                      </li>
+                      <li className="flex justify-between">
+                        <span>Conversations</span>
+                        <span>{insights.summary.snowflake.conversations}</span>
+                      </li>
+                      <li className="flex justify-between text-amber-300">
+                        <span>90d stale</span>
+                        <span>{insights.summary.snowflake.inactive_no_followup}</span>
+                      </li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-amber-800/40 bg-amber-950/20 p-5">
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-200">
+                <AlertCircle className="h-4 w-4" />
+                Re-engagement queue
+              </h2>
+              <p className="text-3xl font-bold text-amber-100">
+                {insights?.followup_candidate_count ?? 0}
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-amber-300/80">
+                Customers with 90+ days no show and no follow-up. Open the bottom
+                taskbar → Email Follow-up to configure and send campaigns.
+              </p>
+              <div className="mt-4 space-y-2 text-xs text-slate-400">
+                <p className="flex items-center gap-2">
+                  <Users className="h-3.5 w-3.5" />
+                  Hover bottom edge for settings
+                </p>
+                <p className="flex items-center gap-2">
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  GHL or SMTP email delivery
+                </p>
+              </div>
+            </div>
           </div>
-        )}
-      </section>
-    </main>
+        </>
+      )}
+    </div>
   );
 }

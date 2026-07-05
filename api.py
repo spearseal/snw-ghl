@@ -28,7 +28,14 @@ from connections import (
     _seed_defaults,
 )
 from connections import router as connections_router
-from ghl_client import GHLClient
+from email_followup import (
+    EmailSettings,
+    SendFollowupRequest,
+    load_email_settings,
+    save_email_settings,
+    send_followup_emails,
+)
+from insights import compute_insights
 from hipaa_compliance import hipaa_manager
 from query_engine import QueryEngine, detect_query_sources
 from snowflake_agent import SnowflakeAgent
@@ -549,6 +556,86 @@ def agent_query(req: AgentQueryRequest, user: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         reader.disconnect()
+
+
+def get_insights(
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+    inactive_days: int = 90,
+    user: str = Depends(get_current_user),
+):
+    """Marketing KPIs and follow-up candidates from connected GHL + Snowflake data."""
+    _seed_defaults()
+    connected = get_connected_sources()
+    if not connected['ghl'] and not connected['snowflake']:
+        return {
+            'connected_sources': connected,
+            'kpis': [],
+            'followup_candidates': [],
+            'message': 'Connect GoHighLevel and/or Snowflake in DB Connectors first.',
+        }
+
+    datasets, errors, skipped = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        snowflake_passcode=snowflake_passcode,
+        limit_per_entity=limit_per_entity,
+    )
+    email_cfg = load_email_settings()
+    threshold = email_cfg.get('inactive_days') or inactive_days
+    result = compute_insights(datasets, connected, inactive_days=threshold)
+    result['errors'] = errors or None
+    result['skipped'] = skipped or None
+    return result
+
+
+@app.get('/api/email/settings')
+def get_email_settings(user: str = Depends(get_current_user)):
+    from email_followup import _public_settings
+    data = load_email_settings()
+    return _public_settings(data)
+
+
+@app.put('/api/email/settings')
+def update_email_settings(settings_in: EmailSettings, user: str = Depends(get_current_user)):
+    saved = save_email_settings(settings_in.model_dump())
+    return saved
+
+
+@app.post('/api/email/followup/send')
+def send_followup(req: SendFollowupRequest, user: str = Depends(get_current_user)):
+    """Send re-engagement emails to 90-day inactive / no-follow-up customers."""
+    _seed_defaults()
+    connected = get_connected_sources()
+    datasets, _, _ = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        limit_per_entity=500,
+    )
+    email_cfg = load_email_settings()
+    insights = compute_insights(
+        datasets,
+        connected,
+        inactive_days=email_cfg.get('inactive_days', 90),
+        mask_contacts=False,
+    )
+    candidates = insights.get('followup_candidates') or []
+
+    ghl_client = None
+    provider = (email_cfg.get('provider') or 'ghl').lower()
+    if provider == 'ghl' and connected['ghl']:
+        ghl_client = GHLClient(get_active_config('ghl'))
+
+    try:
+        return send_followup_emails(
+            candidates,
+            contact_ids=req.contact_ids,
+            send_all=req.send_all,
+            dry_run=req.dry_run,
+            ghl_client=ghl_client,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @app.post('/api/sync')
