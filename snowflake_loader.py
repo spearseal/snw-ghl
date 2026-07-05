@@ -9,6 +9,7 @@ from datetime import datetime
 import pandas as pd
 from config import settings
 from hipaa_compliance import hipaa_manager
+from snowflake_auth import snowflake_connect
 
 
 class SnowflakeLoader:
@@ -31,21 +32,10 @@ class SnowflakeLoader:
             'opportunities': ['title', 'description']
         }
     
-    def connect(self):
+    def connect(self, passcode: Optional[str] = None):
         """Establish connection to Snowflake using the provided config or .env defaults"""
         try:
-            cfg = self.config
-            self.connection = snowflake.connector.connect(
-                account=cfg.get('account') or settings.snowflake_account,
-                user=cfg.get('user') or settings.snowflake_user,
-                password=cfg.get('password') or settings.snowflake_password,
-                warehouse=(cfg.get('warehouse') or settings.snowflake_warehouse) or None,
-                database=(cfg.get('database') or settings.snowflake_database) or None,
-                schema=(cfg.get('schema') or settings.snowflake_schema) or None,
-                role=(cfg.get('role') or settings.snowflake_role) or None,
-                passcode=(cfg.get('passcode') or settings.snowflake_passcode) or None,
-            )
-            
+            self.connection = snowflake_connect(self.config, passcode=passcode)
             self.cursor = self.connection.cursor()
             
             self.logger.info("Successfully connected to Snowflake")

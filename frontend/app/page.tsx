@@ -30,12 +30,15 @@ interface HealthResponse {
   connected_sources?: Record<string, boolean>;
   indexed_sources?: string[];
   source_chunks?: Record<string, number>;
+  snowflake_requires_passcode?: boolean;
 }
 
 interface Connection {
   id: string;
   type: 'snowflake' | 'ghl';
   status: string;
+  snowflake_requires_passcode?: boolean;
+  snowflake_auth_method?: 'key_pair' | 'password';
 }
 
 function formatRefreshError(data: {
@@ -83,6 +86,14 @@ export default function Home() {
   const snowflakeConnected = connections.some(
     (c) => c.type === 'snowflake' && c.status === 'connected'
   );
+  const snowflakeNeedsMfa =
+    health?.snowflake_requires_passcode ??
+    connections.some(
+      (c) =>
+        c.type === 'snowflake' &&
+        c.status === 'connected' &&
+        c.snowflake_requires_passcode !== false
+    );
   const ghlConnected = connections.some(
     (c) => c.type === 'ghl' && c.status === 'connected'
   );
@@ -118,7 +129,7 @@ export default function Home() {
     setRefreshing(true);
     setError(null);
     try {
-      if (snowflakeConnected && !snowflakePasscode.trim()) {
+      if (snowflakeConnected && snowflakeNeedsMfa && !snowflakePasscode.trim()) {
         throw new Error(
           'Enter your current Snowflake MFA code (6 digits from your authenticator app).'
         );
@@ -154,9 +165,9 @@ export default function Home() {
       return;
     }
 
-    if (snowflakeConnected && !snowflakePasscode.trim()) {
+    if (snowflakeConnected && snowflakeNeedsMfa && !snowflakePasscode.trim()) {
       setError(
-        'Enter your current Snowflake MFA code — data is loaded from connected sources when you query.'
+        'Enter your current Snowflake MFA code — required for password-based auth.'
       );
       return;
     }
@@ -262,7 +273,7 @@ export default function Home() {
             Refresh Memory
           </button>
         </div>
-        {snowflakeConnected && (
+        {snowflakeConnected && snowflakeNeedsMfa && (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
             <label htmlFor="snowflake-mfa" className="text-xs text-slate-400">
               Snowflake MFA code
@@ -282,6 +293,11 @@ export default function Home() {
               Required to load Snowflake data (expires every ~30s)
             </span>
           </div>
+        )}
+        {snowflakeConnected && !snowflakeNeedsMfa && (
+          <p className="mt-3 border-t border-slate-800 pt-3 text-xs text-emerald-400">
+            Snowflake key-pair auth — no MFA code needed
+          </p>
         )}
       </div>
 

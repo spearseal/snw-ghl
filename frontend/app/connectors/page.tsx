@@ -24,17 +24,38 @@ interface Connection {
   config: Record<string, string>;
   status: 'untested' | 'connected' | 'error';
   last_tested: string | null;
+  snowflake_auth_method?: 'key_pair' | 'password';
+  snowflake_requires_passcode?: boolean;
 }
 
-const SNOWFLAKE_FIELDS = [
+const SNOWFLAKE_COMMON_FIELDS = [
   { key: 'account', label: 'Account', required: true },
-  { key: 'user', label: 'User', required: true },
-  { key: 'password', label: 'Password', required: true, secret: true },
+  { key: 'user', label: 'User / Service Account', required: true },
   { key: 'warehouse', label: 'Warehouse', required: false },
   { key: 'database', label: 'Database', required: false },
   { key: 'schema', label: 'Schema', required: false },
   { key: 'role', label: 'Role', required: false },
+];
+
+const SNOWFLAKE_PASSWORD_FIELDS = [
+  { key: 'password', label: 'Password', required: true, secret: true },
   { key: 'passcode', label: 'Passcode (MFA)', required: true, secret: true },
+];
+
+const SNOWFLAKE_KEYPAIR_FIELDS = [
+  {
+    key: 'private_key',
+    label: 'Private Key (PEM)',
+    required: true,
+    secret: true,
+    multiline: true,
+  },
+  {
+    key: 'private_key_passphrase',
+    label: 'Key Passphrase (optional)',
+    required: false,
+    secret: true,
+  },
 ];
 
 const GHL_FIELDS = [
@@ -57,6 +78,7 @@ export default function ConnectorsPage() {
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<'snowflake' | 'ghl'>('snowflake');
   const [newConfig, setNewConfig] = useState<Record<string, string>>({});
+  const [snowflakeAuthMethod, setSnowflakeAuthMethod] = useState<'key_pair' | 'password'>('key_pair');
   const [saving, setSaving] = useState(false);
 
   const resetForm = () => {
@@ -65,18 +87,21 @@ export default function ConnectorsPage() {
     setNewName('');
     setNewType('snowflake');
     setNewConfig({});
+    setSnowflakeAuthMethod('key_pair');
   };
 
   const startEdit = (c: Connection) => {
     setEditingId(c.id);
     setNewName(c.name);
     setNewType(c.type);
-    // Prefill non-secret fields; leave secrets blank (blank = keep existing)
     const cfg: Record<string, string> = {};
+    const secretKeys = ['password', 'api_key', 'passcode', 'private_key', 'private_key_passphrase'];
     Object.entries(c.config).forEach(([k, v]) => {
-      const isSecret = ['password', 'api_key', 'passcode'].includes(k);
-      cfg[k] = isSecret ? '' : v;
+      cfg[k] = secretKeys.includes(k) ? '' : v;
     });
+    if (c.type === 'snowflake') {
+      setSnowflakeAuthMethod(c.snowflake_auth_method || cfg.auth_method as 'key_pair' | 'password' || 'password');
+    }
     setNewConfig(cfg);
     setShowForm(true);
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -105,9 +130,9 @@ export default function ConnectorsPage() {
     loadConnections();
   }, [router, loadConnections]);
 
-  const testConnection = async (id: string, type: 'snowflake' | 'ghl') => {
+  const testConnection = async (id: string, type: 'snowflake' | 'ghl', requiresPasscode = true) => {
     const passcode = testPasscodes[id]?.trim();
-    if (type === 'snowflake' && !passcode) {
+    if (type === 'snowflake' && requiresPasscode && !passcode) {
       setTestResults((prev) => ({
         ...prev,
         [id]: 'Enter a fresh 6-digit MFA code before testing.',
@@ -172,7 +197,10 @@ export default function ConnectorsPage() {
           method: 'PUT',
           body: JSON.stringify({
             name: newName,
-            config: newConfig,
+            config: {
+              ...newConfig,
+              ...(newType === 'snowflake' ? { auth_method: snowflakeAuthMethod } : {}),
+            },
           }),
         });
         const data = await res.json();
@@ -192,7 +220,10 @@ export default function ConnectorsPage() {
           body: JSON.stringify({
             name: newName,
             type: newType,
-            config: newConfig,
+            config: {
+              ...newConfig,
+              ...(newType === 'snowflake' ? { auth_method: snowflakeAuthMethod } : {}),
+            },
           }),
         });
         const data = await res.json();
@@ -213,7 +244,13 @@ export default function ConnectorsPage() {
     }
   };
 
-  const fields = newType === 'snowflake' ? SNOWFLAKE_FIELDS : GHL_FIELDS;
+  const snowflakeFields = [
+    ...SNOWFLAKE_COMMON_FIELDS,
+    ...(snowflakeAuthMethod === 'key_pair'
+      ? SNOWFLAKE_KEYPAIR_FIELDS
+      : SNOWFLAKE_PASSWORD_FIELDS),
+  ];
+  const fields = newType === 'snowflake' ? snowflakeFields : GHL_FIELDS;
 
   const statusBadge = (c: Connection) => {
     if (c.status === 'connected')
@@ -295,6 +332,7 @@ export default function ConnectorsPage() {
                 onChange={(e) => {
                   setNewType(e.target.value as 'snowflake' | 'ghl');
                   setNewConfig({});
+                  setSnowflakeAuthMethod('key_pair');
                 }}
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-indigo-500"
               >
@@ -302,24 +340,72 @@ export default function ConnectorsPage() {
                 <option value="ghl">GoHighLevel</option>
               </select>
             </div>
+            {newType === 'snowflake' && (
+              <div className="sm:col-span-2">
+                <label className="mb-1.5 block text-sm text-slate-400">
+                  Snowflake Auth Method
+                </label>
+                <select
+                  value={snowflakeAuthMethod}
+                  onChange={(e) => {
+                    const method = e.target.value as 'key_pair' | 'password';
+                    setSnowflakeAuthMethod(method);
+                    setNewConfig((prev) => {
+                      const next: Record<string, string> = { ...prev, auth_method: method };
+                      if (method === 'key_pair') {
+                        delete next.password;
+                        delete next.passcode;
+                      } else {
+                        delete next.private_key;
+                        delete next.private_key_passphrase;
+                      }
+                      return next;
+                    });
+                  }}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-indigo-500"
+                >
+                  <option value="key_pair">Key-pair (service user, no MFA)</option>
+                  <option value="password">Password + MFA</option>
+                </select>
+              </div>
+            )}
             {fields.map((f) => (
-              <div key={f.key}>
+              <div
+                key={f.key}
+                className={'multiline' in f && f.multiline ? 'sm:col-span-2' : ''}
+              >
                 <label className="mb-1.5 block text-sm text-slate-400">
                   {f.label}
                   {f.required && <span className="text-red-400"> *</span>}
                 </label>
-                <input
-                  type={'secret' in f && f.secret ? 'password' : 'text'}
-                  required={f.required}
-                  value={newConfig[f.key] || ''}
-                  onChange={(e) =>
-                    setNewConfig((prev) => ({
-                      ...prev,
-                      [f.key]: e.target.value,
-                    }))
-                  }
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-indigo-500"
-                />
+                {'multiline' in f && f.multiline ? (
+                  <textarea
+                    required={f.required}
+                    value={newConfig[f.key] || ''}
+                    onChange={(e) =>
+                      setNewConfig((prev) => ({
+                        ...prev,
+                        [f.key]: e.target.value,
+                      }))
+                    }
+                    rows={5}
+                    placeholder="-----BEGIN PRIVATE KEY-----"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100 outline-none focus:border-indigo-500"
+                  />
+                ) : (
+                  <input
+                    type={'secret' in f && f.secret ? 'password' : 'text'}
+                    required={f.required}
+                    value={newConfig[f.key] || ''}
+                    onChange={(e) =>
+                      setNewConfig((prev) => ({
+                        ...prev,
+                        [f.key]: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none focus:border-indigo-500"
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -382,13 +468,19 @@ export default function ConnectorsPage() {
                     </div>
                     <p className="text-xs text-slate-500">
                       {c.type === 'snowflake' ? 'Snowflake' : 'GoHighLevel'}
+                      {c.type === 'snowflake' && c.snowflake_auth_method && (
+                        <span>
+                          {' '}
+                          · {c.snowflake_auth_method === 'key_pair' ? 'key-pair' : 'password+MFA'}
+                        </span>
+                      )}
                       {c.last_tested &&
                         ` · last tested ${new Date(c.last_tested).toLocaleString()}`}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {c.type === 'snowflake' && (
+                  {c.type === 'snowflake' && c.snowflake_requires_passcode !== false && (
                     <input
                       type="text"
                       inputMode="numeric"
@@ -406,7 +498,13 @@ export default function ConnectorsPage() {
                     />
                   )}
                   <button
-                    onClick={() => testConnection(c.id, c.type)}
+                    onClick={() =>
+                      testConnection(
+                        c.id,
+                        c.type,
+                        c.type === 'snowflake' ? c.snowflake_requires_passcode !== false : false
+                      )
+                    }
                     disabled={testing === c.id}
                     className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
                   >

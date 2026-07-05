@@ -12,13 +12,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 import requests
-import snowflake.connector
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from auth import get_current_user
 from config import settings
 from hipaa_compliance import hipaa_manager
+from snowflake_auth import snowflake_connect, uses_key_pair_auth
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ DATA_DIR = os.environ.get(
 )
 CONNECTIONS_FILE = os.path.join(DATA_DIR, 'connections.json')
 
-SECRET_FIELDS = {'password', 'api_key', 'passcode'}
+SECRET_FIELDS = {'password', 'api_key', 'passcode', 'private_key', 'private_key_passphrase'}
 MASK_VALUE = '••••••••'
 
 router = APIRouter(prefix='/api/connections', tags=['connections'])
@@ -121,10 +121,12 @@ def datasource_configured(conn_type: str) -> bool:
     if get_active_config(conn_type):
         return True
     if conn_type == 'snowflake':
+        if uses_key_pair_auth(get_active_config('snowflake') or {}):
+            return bool(settings.snowflake_account and settings.snowflake_user)
         return bool(
             settings.snowflake_account
             and settings.snowflake_user
-            and settings.snowflake_password
+            and (settings.snowflake_password or settings.snowflake_private_key)
         )
     if conn_type == 'ghl':
         return bool(settings.ghl_api_key)
@@ -147,13 +149,52 @@ def get_connected_sources() -> Dict[str, bool]:
     }
 
 
+def snowflake_requires_passcode(config: Optional[Dict[str, str]] = None) -> bool:
+    """Return True when the active Snowflake config uses password + MFA auth."""
+    cfg = config if config is not None else (get_active_config('snowflake') or {})
+    return not uses_key_pair_auth(cfg)
+
+
+def _validate_snowflake_config(config: Dict[str, str]) -> None:
+    """Ensure Snowflake config has credentials for the selected auth method."""
+    method = (config.get('auth_method') or '').strip().lower()
+    if method not in ('key_pair', 'password', ''):
+        raise HTTPException(status_code=422, detail='auth_method must be key_pair or password')
+
+    if uses_key_pair_auth(config):
+        from snowflake_auth import get_private_key_pem
+        if not get_private_key_pem(config):
+            raise HTTPException(
+                status_code=422,
+                detail='A private key is required for key-pair Snowflake authentication',
+            )
+        return
+
+    if not (config.get('password') or '').strip():
+        raise HTTPException(
+            status_code=422,
+            detail='Password is required for password-based Snowflake authentication',
+        )
+    if not (config.get('passcode') or '').strip():
+        raise HTTPException(
+            status_code=422,
+            detail='Passcode (MFA) is required for password-based Snowflake authentication',
+        )
+
+
 def _public_view(conn: Dict[str, Any]) -> Dict[str, Any]:
     """Return a connection with secret fields masked"""
     view = {k: v for k, v in conn.items() if k != 'config'}
+    decrypted = _decrypt_config(conn['config'])
     view['config'] = {
         k: ('••••••••' if k in SECRET_FIELDS and v else v)
         for k, v in conn['config'].items()
     }
+    if conn.get('type') == 'snowflake':
+        view['snowflake_auth_method'] = (
+            'key_pair' if uses_key_pair_auth(decrypted) else 'password'
+        )
+        view['snowflake_requires_passcode'] = not uses_key_pair_auth(decrypted)
     return view
 
 
@@ -164,17 +205,21 @@ def _seed_defaults():
     changed = False
 
     if 'snowflake' not in existing_types and settings.snowflake_account:
+        uses_key = bool(settings.snowflake_private_key.strip())
         sf_config = {
             'account': settings.snowflake_account,
             'user': settings.snowflake_user,
-            'password': settings.snowflake_password,
             'warehouse': settings.snowflake_warehouse,
             'database': settings.snowflake_database,
             'schema': settings.snowflake_schema,
             'role': settings.snowflake_role or '',
-            'passcode': settings.snowflake_passcode or '',
+            'auth_method': 'key_pair' if uses_key else 'password',
+            'password': '' if uses_key else settings.snowflake_password,
+            'passcode': '' if uses_key else (settings.snowflake_passcode or ''),
+            'private_key': settings.snowflake_private_key if uses_key else '',
+            'private_key_passphrase': settings.snowflake_private_key_passphrase if uses_key else '',
         }
-        if not sf_config['passcode'].strip():
+        if not uses_key and not sf_config['passcode'].strip():
             logger.warning(
                 'Snowflake passcode (MFA) not found in .env — '
                 'default connection will fail until a passcode is provided.'
@@ -214,24 +259,15 @@ def _seed_defaults():
         _save_connections(connections)
 
 
-def _test_snowflake(config: Dict[str, str]) -> Dict[str, Any]:
-    conn = snowflake.connector.connect(
-        account=config.get('account'),
-        user=config.get('user'),
-        password=config.get('password'),
-        warehouse=config.get('warehouse') or None,
-        database=config.get('database') or None,
-        schema=config.get('schema') or None,
-        role=config.get('role') or None,
-        passcode=config.get('passcode') or None,
-        login_timeout=15,
-    )
+def _test_snowflake(config: Dict[str, str], passcode: Optional[str] = None) -> Dict[str, Any]:
+    conn = snowflake_connect(config, passcode=passcode, login_timeout=15)
     try:
         cursor = conn.cursor()
         cursor.execute('SELECT CURRENT_VERSION()')
         version = cursor.fetchone()[0]
         cursor.close()
-        return {'ok': True, 'detail': f'Connected (Snowflake {version})'}
+        auth = 'key-pair' if uses_key_pair_auth(config) else 'password'
+        return {'ok': True, 'detail': f'Connected via {auth} (Snowflake {version})'}
     finally:
         conn.close()
 
@@ -269,8 +305,8 @@ def create_connection(req: ConnectionCreate, user: str = Depends(get_current_use
     if any(c['name'].lower() == req.name.strip().lower() for c in connections):
         raise HTTPException(status_code=409, detail='A connection with this name already exists')
 
-    if req.type == 'snowflake' and not (req.config.get('passcode') or '').strip():
-        raise HTTPException(status_code=422, detail='A passcode (MFA) is required for Snowflake connections')
+    if req.type == 'snowflake':
+        _validate_snowflake_config(req.config)
 
     conn = {
         'id': str(uuid.uuid4()),
@@ -316,8 +352,8 @@ def update_connection(connection_id: str, req: ConnectionUpdate, user: str = Dep
 
     if req.config is not None:
         merged = _merge_config(conn['config'], req.config)
-        if conn['type'] == 'snowflake' and not (_decrypt_config(merged).get('passcode') or '').strip():
-            raise HTTPException(status_code=422, detail='A passcode (MFA) is required for Snowflake connections')
+        if conn['type'] == 'snowflake':
+            _validate_snowflake_config(_decrypt_config(merged))
         conn['config'] = merged
         conn['status'] = 'untested'
         conn['last_tested'] = None
@@ -346,13 +382,22 @@ def test_connection(
         raise HTTPException(status_code=404, detail='Connection not found')
 
     config = _decrypt_config(conn['config'])
-    if conn['type'] == 'snowflake' and req.passcode:
-        config = {**config, 'passcode': req.passcode.strip()}
+    if conn['type'] == 'snowflake':
+        if req.passcode:
+            config = {**config, 'passcode': req.passcode.strip()}
+        elif uses_key_pair_auth(config):
+            pass
+        elif not (config.get('passcode') or '').strip():
+            return {
+                'status': 'error',
+                'detail': 'Enter a fresh 6-digit MFA code to test password-based Snowflake auth.',
+                'last_tested': datetime.now(timezone.utc).isoformat(),
+            }
     now = datetime.now(timezone.utc).isoformat()
 
     try:
         if conn['type'] == 'snowflake':
-            result = _test_snowflake(config)
+            result = _test_snowflake(config, passcode=req.passcode)
         else:
             result = _test_ghl(config)
         conn['status'] = 'connected'

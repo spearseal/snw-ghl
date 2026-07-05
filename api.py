@@ -24,6 +24,7 @@ from connections import (
     datasource_connected,
     get_active_config,
     get_connected_sources,
+    snowflake_requires_passcode,
     _seed_defaults,
 )
 from connections import router as connections_router
@@ -110,15 +111,17 @@ def _fetch_datasets(
                 sf_config['passcode'] = snowflake_passcode.strip()
             reader = SnowflakeReader(sf_config)
             try:
-                reader.connect()
+                reader.connect(passcode=snowflake_passcode)
                 datasets['snowflake'] = reader.fetch_all(limit_per_entity)
             except Exception as e:
                 logger.error(f"Snowflake fetch failed: {e}")
                 msg = str(e)
-                if 'TOTP' in msg or 'passcode' in msg.lower():
+                if snowflake_requires_passcode(sf_config) and (
+                    'TOTP' in msg or 'passcode' in msg.lower()
+                ):
                     msg += (
                         ' — Enter a fresh 6-digit MFA code from your authenticator '
-                        '(codes expire every ~30 seconds).'
+                        '(codes expire every ~30 seconds), or switch to key-pair auth.'
                     )
                 errors['snowflake'] = msg
             finally:
@@ -145,6 +148,9 @@ def health():
         'indexed_sources': engine.get_indexed_sources(),
         'source_chunks': source_chunks,
         'record_counts': engine.record_counts,
+        'snowflake_requires_passcode': (
+            connected['snowflake'] and snowflake_requires_passcode()
+        ),
         'timestamp': datetime.utcnow().isoformat(),
     }
 
@@ -176,8 +182,8 @@ def refresh_index(req: RefreshRequest, user: str = Depends(get_current_user)):
                 'connected_sources': connected,
                 'hint': (
                     'Connect Snowflake and/or GoHighLevel in DB Connectors first. '
-                    'For Snowflake MFA, enter a fresh TOTP code (expires every ~30s). '
-                    'Each source is independent — only connected sources are loaded.'
+                    'For password auth, enter a fresh TOTP code. For GCP, use key-pair '
+                    'auth (SNOWFLAKE_PRIVATE_KEY) to avoid MFA on every query.'
                 ),
             },
         )
@@ -222,12 +228,17 @@ def query(req: QueryRequest, user: str = Depends(get_current_user)):
         }
 
     if req.load_fresh:
-        if connected['snowflake'] and not (req.snowflake_passcode or '').strip():
+        sf_config = get_active_config('snowflake') or {}
+        if (
+            connected['snowflake']
+            and snowflake_requires_passcode(sf_config)
+            and not (req.snowflake_passcode or '').strip()
+        ):
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    'Snowflake is connected. Enter a fresh 6-digit MFA code before querying '
-                    'so data can be loaded into memory.'
+                    'Snowflake uses password + MFA. Enter a fresh 6-digit code, or switch '
+                    'the connection to key-pair authentication in DB Connectors.'
                 ),
             )
 

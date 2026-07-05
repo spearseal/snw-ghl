@@ -8,6 +8,7 @@ from datetime import datetime
 import snowflake.connector
 from config import settings
 from hipaa_compliance import hipaa_manager
+from snowflake_auth import snowflake_connect
 
 
 class SnowflakeReader:
@@ -35,22 +36,13 @@ class SnowflakeReader:
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(getattr(logging, settings.log_level, logging.INFO))
 
-    def connect(self):
+    def connect(self, passcode: Optional[str] = None):
         """Establish connection to Snowflake using the provided config or .env defaults"""
         cfg = self.config
         database = cfg.get('database') or settings.snowflake_database
         schema = cfg.get('schema') or settings.snowflake_schema
         try:
-            self.connection = snowflake.connector.connect(
-                account=cfg.get('account') or settings.snowflake_account,
-                user=cfg.get('user') or settings.snowflake_user,
-                password=cfg.get('password') or settings.snowflake_password,
-                warehouse=(cfg.get('warehouse') or settings.snowflake_warehouse) or None,
-                database=database or None,
-                schema=schema or None,
-                role=(cfg.get('role') or settings.snowflake_role) or None,
-                passcode=(cfg.get('passcode') or settings.snowflake_passcode) or None,
-            )
+            self.connection = snowflake_connect(cfg, passcode=passcode)
             self.cursor = self.connection.cursor(snowflake.connector.DictCursor)
             hipaa_manager.log_audit_event('snowflake_reader_connection', {
                 'database': database,
