@@ -10,7 +10,7 @@ Endpoints:
 import logging
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -81,6 +81,169 @@ class RefreshRequest(BaseModel):
     snowflake_passcode: Optional[str] = Field(default=None, max_length=10)
 
 
+class SmartQueryRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    limit: int = Field(default=100, ge=1, le=1000)
+    top_k: int = Field(default=5, ge=1, le=25)
+    mask_phi: bool = True
+    load_fresh: bool = True
+    limit_per_entity: int = Field(default=500, ge=1, le=5000)
+    snowflake_passcode: Optional[str] = Field(default=None, max_length=10)
+
+
+SOURCE_LABELS = {
+    'snowflake': 'Snowflake',
+    'ghl': 'GoHighLevel',
+}
+
+
+def _build_combined_answer(
+    results_by_source: Dict[str, Dict[str, Any]],
+    sources_queried: List[str],
+    load_errors: Dict[str, str],
+) -> str:
+    parts: List[str] = []
+    for source in sources_queried:
+        label = SOURCE_LABELS.get(source, source)
+        block = results_by_source.get(source)
+        if block and block.get('answer'):
+            parts.append(f'[{label}] {block["answer"]}')
+        elif load_errors.get(source):
+            parts.append(f'[{label}] Could not query: {load_errors[source]}')
+
+    if parts:
+        return ' '.join(parts)
+
+    if load_errors:
+        failed = '; '.join(f'{k}: {v}' for k, v in load_errors.items())
+        return f'No results from connected sources. {failed}'
+
+    return 'No results found in connected data sources for your question.'
+
+
+@app.post('/api/smart/query')
+def smart_query(req: SmartQueryRequest, user: str = Depends(get_current_user)):
+    """
+    Unified query across all connected sources.
+    Refreshes memory from Snowflake and/or GHL, then returns labeled results per datasource.
+    """
+    _seed_defaults()
+    connected = get_connected_sources()
+    load_errors: Dict[str, str] = {}
+    load_skipped: Dict[str, str] = {}
+    results_by_source: Dict[str, Dict[str, Any]] = {}
+
+    if not connected['ghl'] and not connected['snowflake']:
+        return {
+            'answer': (
+                'No data sources connected. Go to DB Connectors, test Snowflake '
+                'and/or GoHighLevel, then query again.'
+            ),
+            'connected_sources': connected,
+            'indexed_sources': engine.get_indexed_sources(),
+            'sources_queried': [],
+            'results_by_source': {},
+            'load_errors': load_errors,
+            'load_skipped': load_skipped,
+        }
+
+    if req.load_fresh:
+        datasets, load_errors, load_skipped = _fetch_datasets(
+            include_ghl=connected['ghl'],
+            include_snowflake=connected['snowflake'],
+            snowflake_passcode=req.snowflake_passcode,
+            limit_per_entity=req.limit_per_entity,
+        )
+        if datasets:
+            engine.index_data(datasets, merge=True)
+
+    available = [s for s in ('snowflake', 'ghl') if connected.get(s)]
+    sources_queried = detect_query_sources(req.question, available)
+
+    if 'snowflake' in sources_queried and connected['snowflake']:
+        sf_config = dict(get_active_config('snowflake') or {})
+        if snowflake_requires_passcode(sf_config) and not (req.snowflake_passcode or '').strip():
+            load_errors['snowflake'] = (
+                'Snowflake uses password + MFA. Enter a fresh 6-digit code, or switch '
+                'to key-pair authentication in DB Connectors.'
+            )
+        else:
+            reader = None
+            try:
+                if req.snowflake_passcode:
+                    sf_config['passcode'] = req.snowflake_passcode.strip()
+                reader = SnowflakeReader(sf_config)
+                reader.connect(passcode=req.snowflake_passcode)
+                agent = SnowflakeAgent(reader)
+                sf_result = agent.query(
+                    req.question,
+                    limit=req.limit,
+                    mask_phi=req.mask_phi,
+                )
+                results_by_source['snowflake'] = {
+                    'datasource': SOURCE_LABELS['snowflake'],
+                    **sf_result,
+                }
+            except Exception as e:
+                logger.error(f"Snowflake smart query failed: {e}")
+                msg = str(e)
+                if snowflake_requires_passcode(sf_config) and (
+                    'TOTP' in msg or 'passcode' in msg.lower()
+                ):
+                    msg += (
+                        ' — Enter a fresh 6-digit MFA code from your authenticator, '
+                        'or switch to key-pair auth.'
+                    )
+                load_errors['snowflake'] = msg
+            finally:
+                if reader:
+                    try:
+                        reader.disconnect()
+                    except Exception:
+                        pass
+
+    if 'ghl' in sources_queried and connected['ghl']:
+        try:
+            ghl_result = engine.query(
+                req.question,
+                top_k=req.top_k,
+                mask_phi=req.mask_phi,
+                sources=['ghl'],
+            )
+            results_by_source['ghl'] = {
+                'datasource': SOURCE_LABELS['ghl'],
+                **ghl_result,
+            }
+            if load_errors.get('ghl'):
+                results_by_source['ghl']['answer'] = (
+                    f"{results_by_source['ghl'].get('answer', '')} "
+                    f"(Note: {load_errors['ghl']})"
+                ).strip()
+        except Exception as e:
+            logger.error(f"GHL smart query failed: {e}")
+            load_errors['ghl'] = str(e)
+
+    answer = _build_combined_answer(results_by_source, sources_queried, load_errors)
+
+    hipaa_manager.log_audit_event('smart_query_executed', {
+        'query_hash': hipaa_manager.hash_phi(req.question),
+        'sources_queried': sources_queried,
+        'connected_sources': connected,
+        'timestamp': datetime.utcnow().isoformat(),
+    })
+
+    return {
+        'answer': answer,
+        'connected_sources': connected,
+        'indexed_sources': engine.get_indexed_sources(),
+        'sources_queried': [SOURCE_LABELS.get(s, s) for s in sources_queried],
+        'results_by_source': results_by_source,
+        'load_errors': load_errors or None,
+        'load_skipped': load_skipped or None,
+        'total_chunks': len(engine.chunks),
+    }
+
+
 class AgentQueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     limit: int = Field(default=100, ge=1, le=1000)
@@ -124,7 +287,10 @@ def _fetch_datasets(
         else:
             try:
                 ghl = GHLClient(get_active_config('ghl'))
-                datasets['ghl'] = ghl.get_all_data()
+                ghl_data, ghl_entity_errors = ghl.get_all_data()
+                datasets['ghl'] = ghl_data
+                for entity, msg in ghl_entity_errors.items():
+                    errors[f'ghl.{entity}'] = msg
             except Exception as e:
                 logger.error(f"GHL fetch failed: {e}")
                 errors['ghl'] = str(e)
@@ -300,7 +466,8 @@ def query(req: QueryRequest, user: str = Depends(get_current_user)):
             engine.index_data(datasets, merge=True)
 
     indexed = engine.get_indexed_sources()
-    search_sources = detect_query_sources(req.question, indexed)
+    available = [s for s in indexed if connected.get(s)]
+    search_sources = detect_query_sources(req.question, available or indexed)
 
     try:
         result = engine.query(
@@ -393,7 +560,7 @@ def sync(user: str = Depends(get_current_user)):
         loader = SnowflakeLoader(get_active_config('snowflake'))
         loader.connect()
         try:
-            data = ghl.get_all_data()
+            data, entity_errors = ghl.get_all_data()
             loader.load_all_data(data)
         finally:
             loader.disconnect()
@@ -402,6 +569,7 @@ def sync(user: str = Depends(get_current_user)):
             'contacts': len(data['contacts']),
             'conversations': len(data['conversations']),
             'opportunities': len(data['opportunities']),
+            'errors': {f'ghl.{k}': v for k, v in entity_errors.items()} or None,
         }
     except Exception as e:
         logger.error(f"Sync failed: {e}")

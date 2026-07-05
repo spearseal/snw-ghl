@@ -4,12 +4,13 @@ Handles authentication and data retrieval from GoHighLevel
 """
 import requests
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 from config import settings
 from hipaa_compliance import hipaa_manager
 
 GHL_API_VERSION = '2021-07-28'
+GHL_CONVERSATIONS_API_VERSION = '2021-04-15'
 
 
 def ghl_request_headers(
@@ -50,7 +51,8 @@ class GHLClient:
         endpoint: str,
         params: Optional[Dict] = None,
         data: Optional[Dict] = None,
-        retry_count: int = 0
+        retry_count: int = 0,
+        api_version: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Make HTTP request to GHL API with retry logic
@@ -66,6 +68,11 @@ class GHLClient:
             Response JSON data
         """
         url = f"{self.base_url}{endpoint}"
+        extra_headers = (
+            {'Version': api_version}
+            if api_version
+            else None
+        )
         
         try:
             response = self.session.request(
@@ -73,6 +80,7 @@ class GHLClient:
                 url=url,
                 params=params,
                 json=data,
+                headers=extra_headers,
                 timeout=30
             )
             
@@ -98,7 +106,9 @@ class GHLClient:
             # Retry on server errors
             if e.response and e.response.status_code >= 500 and retry_count < settings.max_retries:
                 self.logger.warning(f"Retrying request (attempt {retry_count + 1})")
-                return self._make_request(method, endpoint, params, data, retry_count + 1)
+                return self._make_request(
+                    method, endpoint, params, data, retry_count + 1, api_version
+                )
             
             raise
             
@@ -190,17 +200,25 @@ class GHLClient:
         Returns:
             List of conversation records
         """
-        params = {'limit': limit}
+        if not self.location_id:
+            raise ValueError('GoHighLevel location_id is required to fetch conversations')
+
+        params: Dict[str, Any] = {
+            'locationId': self.location_id,
+            'limit': limit,
+        }
         
         if start_after:
-            params['startAfter'] = start_after
-            
-        if self.location_id:
-            params['locationId'] = self.location_id
+            params['startAfterId'] = start_after
         
         self.logger.info(f"Fetching {limit} conversations from GHL")
         
-        response = self._make_request('GET', '/conversations/', params=params)
+        response = self._make_request(
+            'GET',
+            '/conversations/search',
+            params=params,
+            api_version=GHL_CONVERSATIONS_API_VERSION,
+        )
         
         conversations = response.get('conversations', [])
         
@@ -227,17 +245,20 @@ class GHLClient:
         Returns:
             List of opportunity records
         """
-        params = {'limit': limit}
+        if not self.location_id:
+            raise ValueError('GoHighLevel location_id is required to fetch opportunities')
+
+        params: Dict[str, Any] = {
+            'location_id': self.location_id,
+            'limit': limit,
+        }
         
         if start_after:
-            params['startAfter'] = start_after
-            
-        if self.location_id:
-            params['locationId'] = self.location_id
+            params['startAfterId'] = start_after
         
         self.logger.info(f"Fetching {limit} opportunities from GHL")
         
-        response = self._make_request('GET', '/opportunities/', params=params)
+        response = self._make_request('GET', '/opportunities/search', params=params)
         
         opportunities = response.get('opportunities', [])
         
@@ -249,7 +270,7 @@ class GHLClient:
         
         return opportunities
     
-    def get_all_data(self) -> Dict[str, List[Dict[str, Any]]]:
+    def get_all_data(self) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, str]]:
         """
         Retrieve all relevant data from GoHighLevel
         Fetches contacts, conversations, and opportunities
@@ -264,32 +285,46 @@ class GHLClient:
             'conversations': [],
             'opportunities': []
         }
-        
-        # Fetch contacts with pagination
-        contacts = []
-        start_after = None
-        while True:
-            batch = self.get_contacts(limit=settings.batch_size, start_after=start_after)
-            if not batch:
-                break
-            contacts.extend(batch)
-            if len(batch) < settings.batch_size:
-                break
-            start_after = batch[-1].get('id')
-        
-        all_data['contacts'] = contacts
-        
-        # Fetch conversations
-        all_data['conversations'] = self.get_conversations(limit=settings.batch_size)
-        
-        # Fetch opportunities
-        all_data['opportunities'] = self.get_opportunities(limit=settings.batch_size)
+        entity_errors: Dict[str, str] = {}
+
+        try:
+            contacts = []
+            start_after = None
+            while True:
+                batch = self.get_contacts(limit=settings.batch_size, start_after=start_after)
+                if not batch:
+                    break
+                contacts.extend(batch)
+                if len(batch) < settings.batch_size:
+                    break
+                start_after = batch[-1].get('id')
+            all_data['contacts'] = contacts
+        except Exception as e:
+            self.logger.error(f"Failed to fetch GHL contacts: {e}")
+            entity_errors['contacts'] = str(e)
+
+        try:
+            all_data['conversations'] = self.get_conversations(limit=settings.batch_size)
+        except Exception as e:
+            self.logger.error(f"Failed to fetch GHL conversations: {e}")
+            entity_errors['conversations'] = str(e)
+
+        try:
+            all_data['opportunities'] = self.get_opportunities(limit=settings.batch_size)
+        except Exception as e:
+            self.logger.error(f"Failed to fetch GHL opportunities: {e}")
+            entity_errors['opportunities'] = str(e)
+
+        if entity_errors and not any(all_data.values()):
+            details = '; '.join(f'{k}: {v}' for k, v in entity_errors.items())
+            raise RuntimeError(f'Failed to fetch any GHL data ({details})')
         
         hipaa_manager.log_audit_event('ghl_full_sync', {
             'contacts_count': len(all_data['contacts']),
             'conversations_count': len(all_data['conversations']),
             'opportunities_count': len(all_data['opportunities']),
+            'entity_errors': entity_errors or None,
             'timestamp': datetime.utcnow().isoformat()
         })
         
-        return all_data
+        return all_data, entity_errors

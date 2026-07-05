@@ -31,11 +31,26 @@ interface AgentResponse {
   columns?: string[];
   row_count: number;
   rows: Record<string, unknown>[];
+  datasource?: string;
   schema_summary?: {
     database: string;
     schema: string;
     table_count: number;
     tables: string[];
+  };
+}
+
+interface SmartQueryResponse {
+  answer: string;
+  connected_sources?: Record<string, boolean>;
+  indexed_sources?: string[];
+  sources_queried?: string[];
+  load_errors?: Record<string, string>;
+  load_skipped?: Record<string, string>;
+  total_chunks?: number;
+  results_by_source: {
+    snowflake?: AgentResponse;
+    ghl?: QueryResponse & { datasource?: string };
   };
 }
 
@@ -108,10 +123,11 @@ export default function Home() {
   const [response, setResponse] = useState<QueryResponse | null>(null);
   const [agentResponse, setAgentResponse] = useState<AgentResponse | null>(null);
   const [schemaInfo, setSchemaInfo] = useState<SchemaResponse | null>(null);
-  const [queryMode, setQueryMode] = useState<'agent' | 'memory'>('agent');
+  const [queryMode, setQueryMode] = useState<'smart' | 'memory'>('smart');
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [snowflakePasscode, setSnowflakePasscode] = useState('');
+  const [smartResponse, setSmartResponse] = useState<SmartQueryResponse | null>(null);
 
   const snowflakeConnected = connections.some(
     (c) => c.type === 'snowflake' && c.status === 'connected'
@@ -188,12 +204,14 @@ export default function Home() {
     e.preventDefault();
     if (!question.trim()) return;
 
-    if (queryMode === 'agent') {
-      if (!snowflakeConnected) {
-        setError('Snowflake Agent requires a connected Snowflake datasource.');
+    if (queryMode === 'smart') {
+      if (!snowflakeConnected && !ghlConnected) {
+        setError(
+          'No data sources connected. Go to DB Connectors and test your Snowflake and/or GoHighLevel connection first.'
+        );
         return;
       }
-      if (snowflakeNeedsMfa && !snowflakePasscode.trim()) {
+      if (snowflakeConnected && snowflakeNeedsMfa && !snowflakePasscode.trim()) {
         setError('Enter your current Snowflake MFA code for password-based auth.');
         return;
       }
@@ -201,26 +219,31 @@ export default function Home() {
       setError(null);
       setResponse(null);
       setAgentResponse(null);
+      setSmartResponse(null);
       try {
-        const res = await apiFetch('/api/agent/query', {
+        const res = await apiFetch('/api/smart/query', {
           method: 'POST',
           body: JSON.stringify({
             question,
             limit: 100,
+            top_k: 5,
             mask_phi: maskPhi,
+            load_fresh: true,
+            limit_per_entity: 500,
             snowflake_passcode: snowflakePasscode.trim() || undefined,
           }),
         }, 120_000);
         const data = await res.json();
         if (!res.ok) {
           throw new Error(
-            typeof data.detail === 'string' ? data.detail : 'Agent query failed'
+            typeof data.detail === 'string' ? data.detail : 'Smart query failed'
           );
         }
-        setAgentResponse(data);
+        setSmartResponse(data);
         setSnowflakePasscode('');
+        await fetchHealth();
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Agent query failed');
+        setError(e instanceof Error ? e.message : 'Smart query failed');
       } finally {
         setLoading(false);
       }
@@ -245,6 +268,7 @@ export default function Home() {
     setError(null);
     setResponse(null);
     setAgentResponse(null);
+    setSmartResponse(null);
     try {
       const res = await apiFetch('/api/query', {
         method: 'POST',
@@ -309,20 +333,21 @@ export default function Home() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold">Query Console</h1>
         <p className="text-sm text-slate-400">
-          Snowflake Agent discovers all tables in your database/schema and answers
-          with live SQL. Memory search uses pre-loaded chunks (GHL + Snowflake).
+          Smart Query checks every connected datasource, refreshes memory, and labels
+          results by source (Snowflake live SQL + GoHighLevel memory). Memory Search
+          searches pre-loaded chunks only.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setQueryMode('agent')}
+            onClick={() => setQueryMode('smart')}
             className={`rounded-lg px-3 py-1.5 text-sm ${
-              queryMode === 'agent'
+              queryMode === 'smart'
                 ? 'bg-indigo-600 text-white'
                 : 'bg-slate-800 text-slate-300'
             }`}
           >
-            Snowflake Agent
+            Smart Query
           </button>
           <button
             type="button"
@@ -335,7 +360,7 @@ export default function Home() {
           >
             Memory Search
           </button>
-          {snowflakeConnected && queryMode === 'agent' && (
+          {snowflakeConnected && queryMode === 'smart' && (
             <button
               type="button"
               onClick={loadSchema}
@@ -441,8 +466,8 @@ export default function Home() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder={
-                queryMode === 'agent'
-                  ? 'e.g. give me total customers from ghl_contacts'
+                queryMode === 'smart'
+                  ? 'e.g. show contacts and total customers from connected sources'
                   : 'e.g. Which contacts have open opportunities?'
               }
               className="w-full rounded-xl border border-slate-700 bg-slate-900 py-3 pl-11 pr-4 text-slate-100 placeholder-slate-500 outline-none transition focus:border-indigo-500"
@@ -480,7 +505,7 @@ export default function Home() {
           </div>
         )}
 
-        {schemaInfo && queryMode === 'agent' && (
+        {schemaInfo && queryMode === 'smart' && (
           <div className="mb-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm">
             <p className="mb-2 font-medium text-slate-200">
               Schema {schemaInfo.database}.{schemaInfo.schema} — {schemaInfo.table_count}{' '}
@@ -497,6 +522,116 @@ export default function Home() {
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {smartResponse && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-indigo-800/50 bg-indigo-950/30 px-4 py-3">
+              <p className="text-sm font-medium text-indigo-200">{smartResponse.answer}</p>
+              {smartResponse.sources_queried && smartResponse.sources_queried.length > 0 && (
+                <p className="mt-1 text-xs text-indigo-300/70">
+                  Queried: {smartResponse.sources_queried.join(', ')}
+                </p>
+              )}
+              {smartResponse.load_errors && Object.keys(smartResponse.load_errors).length > 0 && (
+                <p className="mt-2 whitespace-pre-wrap text-xs text-amber-300/90">
+                  {Object.entries(smartResponse.load_errors)
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join('\n')}
+                </p>
+              )}
+            </div>
+
+            {smartResponse.results_by_source.snowflake && (
+              <div className="space-y-3 rounded-xl border border-sky-800/40 bg-sky-950/20 p-4">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-sky-900/40 px-2.5 py-1 text-xs uppercase tracking-wide text-sky-300">
+                    Snowflake
+                  </span>
+                  <span className="text-xs text-slate-500">Live SQL</span>
+                </div>
+                <p className="text-sm text-sky-100">
+                  {smartResponse.results_by_source.snowflake.answer}
+                </p>
+                {smartResponse.results_by_source.snowflake.reasoning && (
+                  <p className="text-xs text-sky-300/70">
+                    {smartResponse.results_by_source.snowflake.reasoning}
+                  </p>
+                )}
+                {smartResponse.results_by_source.snowflake.sql && (
+                  <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-xs text-emerald-300">
+                    {smartResponse.results_by_source.snowflake.sql}
+                  </pre>
+                )}
+                {smartResponse.results_by_source.snowflake.rows &&
+                  smartResponse.results_by_source.snowflake.rows.length > 0 && (
+                    <div className="overflow-x-auto rounded-xl border border-slate-800">
+                      <table className="min-w-full text-left text-sm text-slate-300">
+                        <thead className="bg-slate-900 text-xs uppercase text-slate-500">
+                          <tr>
+                            {Object.keys(smartResponse.results_by_source.snowflake.rows[0]).map(
+                              (col) => (
+                                <th key={col} className="px-4 py-2">
+                                  {col}
+                                </th>
+                              )
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {smartResponse.results_by_source.snowflake.rows.map((row, i) => (
+                            <tr key={i} className="border-t border-slate-800">
+                              {Object.keys(
+                                smartResponse.results_by_source.snowflake!.rows[0]
+                              ).map((col) => (
+                                <td key={col} className="px-4 py-2 font-mono text-xs">
+                                  {String(row[col] ?? '')}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+              </div>
+            )}
+
+            {smartResponse.results_by_source.ghl && (
+              <div className="space-y-3 rounded-xl border border-violet-800/40 bg-violet-950/20 p-4">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-violet-900/40 px-2.5 py-1 text-xs uppercase tracking-wide text-violet-300">
+                    GoHighLevel
+                  </span>
+                  <span className="text-xs text-slate-500">Memory search</span>
+                </div>
+                <p className="text-sm text-violet-100">
+                  {smartResponse.results_by_source.ghl.answer}
+                </p>
+                {smartResponse.results_by_source.ghl.results.map((r, i) => (
+                  <div
+                    key={i}
+                    className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
+                  >
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-full bg-indigo-900/40 px-2.5 py-1 text-indigo-300">
+                        GoHighLevel
+                      </span>
+                      <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-400">
+                        {r.entity}
+                      </span>
+                      <span className="ml-auto text-slate-500">
+                        relevance {r.score.toFixed(2)}
+                      </span>
+                    </div>
+                    <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-slate-300">
+                      {r.text}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -610,10 +745,10 @@ export default function Home() {
           </div>
         )}
 
-        {!response && !agentResponse && !error && (
+        {!response && !agentResponse && !smartResponse && !error && (
           <div className="rounded-xl border border-dashed border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
-            {queryMode === 'agent'
-              ? 'Use Snowflake Agent to analyze all tables in your database/schema and query with natural language.'
+            {queryMode === 'smart'
+              ? 'Connect Snowflake and/or GoHighLevel, refresh memory, then ask a question across all connected sources.'
               : 'Connect sources, refresh memory, then search indexed chunks.'}
           </div>
         )}

@@ -52,11 +52,14 @@ def run_sync():
         try:
             # Extract data from GHL
             logger.info("Extracting data from GoHighLevel...")
-            ghl_data = ghl_client.get_all_data()
+            ghl_data, entity_errors = ghl_client.get_all_data()
             
             logger.info(f"Extracted {len(ghl_data['contacts'])} contacts")
             logger.info(f"Extracted {len(ghl_data['conversations'])} conversations")
             logger.info(f"Extracted {len(ghl_data['opportunities'])} opportunities")
+            if entity_errors:
+                for entity, msg in entity_errors.items():
+                    logger.warning(f"GHL {entity} fetch failed: {msg}")
             
             # Load data to Snowflake
             logger.info("Loading data to Snowflake...")
@@ -67,6 +70,7 @@ def run_sync():
                 'contacts_count': len(ghl_data['contacts']),
                 'conversations_count': len(ghl_data['conversations']),
                 'opportunities_count': len(ghl_data['opportunities']),
+                'entity_errors': entity_errors or None,
                 'timestamp': datetime.utcnow().isoformat()
             })
             

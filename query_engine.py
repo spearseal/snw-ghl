@@ -29,17 +29,25 @@ GHL_HINTS = frozenset({
 
 
 def detect_query_sources(question: str, available: List[str]) -> List[str]:
-    """Pick which indexed sources to search based on NL cues in the question."""
-    if len(available) <= 1:
+    """Pick which sources to query. Defaults to all available unless the question names one."""
+    if not available:
+        return []
+    if len(available) == 1:
         return available
 
+    q_lower = question.lower()
     tokens = set(_tokenize(question))
-    wants_snowflake = bool(tokens & SNOWFLAKE_HINTS) or 'go high' in question.lower()
-    wants_ghl = bool(tokens & GHL_HINTS)
+    wants_snowflake = bool(tokens & SNOWFLAKE_HINTS) or 'from snowflake' in q_lower
+    wants_ghl = (
+        bool(tokens & GHL_HINTS)
+        or 'from ghl' in q_lower
+        or 'from gohighlevel' in q_lower
+        or 'from go high level' in q_lower
+    )
 
-    if wants_snowflake and 'snowflake' in available:
-        return ['snowflake', 'ghl'] if wants_ghl and 'ghl' in available else ['snowflake']
-    if wants_ghl and 'ghl' in available:
+    if wants_snowflake and not wants_ghl and 'snowflake' in available:
+        return ['snowflake']
+    if wants_ghl and not wants_snowflake and 'ghl' in available:
         return ['ghl']
     return available
 
