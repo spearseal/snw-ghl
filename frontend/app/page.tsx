@@ -192,10 +192,9 @@ export default function Home() {
     }
   };
 
-  const connectedList = [
-    snowflakeConnected && 'Snowflake',
-    ghlConnected && 'GoHighLevel',
-  ].filter(Boolean);
+  const connectedList: string[] = [];
+  if (snowflakeConnected) connectedList.push('Snowflake');
+  if (ghlConnected) connectedList.push('GoHighLevel');
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">
