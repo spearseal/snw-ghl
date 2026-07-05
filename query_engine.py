@@ -20,6 +20,30 @@ def _tokenize(text: str) -> List[str]:
     return re.findall(r"[a-z0-9']+", text.lower())
 
 
+SNOWFLAKE_HINTS = frozenset({
+    'snowflake', 'warehouse', 'database', 'schema', 'sql', 'table', 'tables', 'column',
+})
+GHL_HINTS = frozenset({
+    'ghl', 'gohighlevel', 'highlevel', 'leadconnector', 'crm', 'pipeline', 'location',
+})
+
+
+def detect_query_sources(question: str, available: List[str]) -> List[str]:
+    """Pick which indexed sources to search based on NL cues in the question."""
+    if len(available) <= 1:
+        return available
+
+    tokens = set(_tokenize(question))
+    wants_snowflake = bool(tokens & SNOWFLAKE_HINTS) or 'go high' in question.lower()
+    wants_ghl = bool(tokens & GHL_HINTS)
+
+    if wants_snowflake and 'snowflake' in available:
+        return ['snowflake', 'ghl'] if wants_ghl and 'ghl' in available else ['snowflake']
+    if wants_ghl and 'ghl' in available:
+        return ['ghl']
+    return available
+
+
 class QueryEngine:
     """
     In-memory retrieval engine.
@@ -38,6 +62,17 @@ class QueryEngine:
         self._doc_freq: Counter = Counter()
         self._avg_len: float = 0.0
         self.last_indexed: Optional[str] = None
+        self.record_counts: Dict[str, Dict[str, int]] = {}
+
+    def get_indexed_sources(self) -> List[str]:
+        return sorted({c['source'] for c in self.chunks})
+
+    def _rebuild_doc_freq(self):
+        self._doc_freq = Counter()
+        for chunk in self.chunks:
+            self._doc_freq.update(set(chunk['tokens'].keys()))
+        total_len = sum(c['length'] for c in self.chunks)
+        self._avg_len = total_len / len(self.chunks) if self.chunks else 0.0
 
     # ------------------------------------------------------------------ #
     # Indexing
@@ -53,19 +88,36 @@ class QueryEngine:
             lines.append(f"{key}: {value}")
         return "\n".join(lines)
 
-    def index_data(self, datasets: Dict[str, Dict[str, List[Dict[str, Any]]]]):
+    def index_data(
+        self,
+        datasets: Dict[str, Dict[str, List[Dict[str, Any]]]],
+        merge: bool = False,
+    ):
         """
         Build the chunk index.
 
         Args:
             datasets: {'ghl': {'contacts': [...], ...}, 'snowflake': {...}}
+            merge: When True, replace only the provided sources and keep others.
         """
-        self.chunks = []
-        self._doc_freq = Counter()
+        if merge:
+            replace_sources = set(datasets.keys())
+            self.chunks = [c for c in self.chunks if c['source'] not in replace_sources]
+            for source in replace_sources:
+                self.record_counts.pop(source, None)
+        else:
+            self.chunks = []
+            self.record_counts = {}
 
         for source, entities in datasets.items():
+            counts = {
+                entity: len(records or [])
+                for entity, records in (entities or {}).items()
+            }
+            self.record_counts[source] = counts
+
             for entity_type, records in (entities or {}).items():
-                for record in records:
+                for record in records or []:
                     text = self._record_to_text(record)
                     if not text:
                         continue
@@ -81,17 +133,16 @@ class QueryEngine:
                             'tokens': Counter(tokens),
                             'length': len(tokens),
                         })
-                        self._doc_freq.update(set(tokens))
 
-        total_len = sum(c['length'] for c in self.chunks)
-        self._avg_len = total_len / len(self.chunks) if self.chunks else 0.0
+        self._rebuild_doc_freq()
         self.last_indexed = datetime.utcnow().isoformat()
 
         hipaa_manager.log_audit_event('query_index_built', {
             'chunks': len(self.chunks),
+            'sources': self.get_indexed_sources(),
             'timestamp': self.last_indexed,
         })
-        self.logger.info(f"Indexed {len(self.chunks)} chunks")
+        self.logger.info(f"Indexed {len(self.chunks)} chunks from {self.get_indexed_sources()}")
 
     # ------------------------------------------------------------------ #
     # Retrieval
@@ -110,8 +161,13 @@ class QueryEngine:
             score += idf * (tf * (k1 + 1)) / denom
         return score
 
-    def query(self, question: str, top_k: int = 5,
-              mask_phi: bool = True) -> Dict[str, Any]:
+    def query(
+        self,
+        question: str,
+        top_k: int = 5,
+        mask_phi: bool = True,
+        sources: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
         Answer a free-text question from the indexed data.
 
@@ -119,6 +175,7 @@ class QueryEngine:
             question: Natural language question
             top_k: Number of chunks to return
             mask_phi: Mask email/phone patterns in output
+            sources: Optional list of sources to search (snowflake, ghl)
 
         Returns:
             Dict with answer summary and supporting results
@@ -128,17 +185,32 @@ class QueryEngine:
             'timestamp': datetime.utcnow().isoformat(),
         })
 
-        if not self.chunks:
+        searchable = self.chunks
+        if sources:
+            searchable = [c for c in self.chunks if c['source'] in sources]
+
+        if not searchable:
+            if not self.chunks:
+                return {
+                    'answer': 'No data in memory yet. Connect a datasource and run a query.',
+                    'results': [],
+                    'total_chunks': 0,
+                    'searched_sources': sources or [],
+                    'indexed_sources': self.get_indexed_sources(),
+                }
+            label = ', '.join(sources or [])
             return {
-                'answer': 'No data indexed yet. Run a sync or refresh the index first.',
+                'answer': f'No data indexed for {label}. Connect that source and query again.',
                 'results': [],
-                'total_chunks': 0,
+                'total_chunks': len(self.chunks),
+                'searched_sources': sources or [],
+                'indexed_sources': self.get_indexed_sources(),
             }
 
         query_tokens = _tokenize(question)
         scored = [
             (self._bm25_score(query_tokens, chunk), chunk)
-            for chunk in self.chunks
+            for chunk in searchable
         ]
         scored = [item for item in scored if item[0] > 0]
         scored.sort(key=lambda item: item[0], reverse=True)
@@ -158,18 +230,28 @@ class QueryEngine:
             })
 
         if results:
+            result_sources = sorted({r['source'] for r in results})
+            source_labels = {
+                'snowflake': 'Snowflake',
+                'ghl': 'GoHighLevel',
+            }
+            names = [source_labels.get(s, s) for s in result_sources]
             answer = (
-                f"Found {len(results)} relevant record(s) "
-                f"across {len({r['source'] for r in results})} data source(s). "
-                f"Top match is from {results[0]['source']} / {results[0]['entity']}."
+                f"Found {len(results)} relevant record(s) from "
+                f"{', '.join(names)}. "
+                f"Top match: {source_labels.get(results[0]['source'], results[0]['source'])} "
+                f"/ {results[0]['entity']}."
             )
         else:
-            answer = 'No matching records found for your query.'
+            searched = ', '.join(sources) if sources else 'connected sources'
+            answer = f'No matching records found in {searched} for your question.'
 
         return {
             'answer': answer,
             'results': results,
             'total_chunks': len(self.chunks),
+            'searched_sources': sources or self.get_indexed_sources(),
+            'indexed_sources': self.get_indexed_sources(),
         }
 
     @staticmethod

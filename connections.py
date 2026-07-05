@@ -44,6 +44,10 @@ class ConnectionUpdate(BaseModel):
     config: Optional[Dict[str, str]] = None
 
 
+class TestConnectionRequest(BaseModel):
+    passcode: Optional[str] = Field(default=None, max_length=10)
+
+
 def _load_connections() -> List[Dict[str, Any]]:
     if not os.path.exists(CONNECTIONS_FILE):
         return []
@@ -125,6 +129,22 @@ def datasource_configured(conn_type: str) -> bool:
     if conn_type == 'ghl':
         return bool(settings.ghl_api_key)
     return False
+
+
+def datasource_connected(conn_type: str) -> bool:
+    """Return True if a live-tested connection exists for this source type."""
+    return any(
+        c.get('type') == conn_type and c.get('status') == 'connected'
+        for c in _load_connections()
+    )
+
+
+def get_connected_sources() -> Dict[str, bool]:
+    """Return which independent datasource types are currently connected."""
+    return {
+        'snowflake': datasource_connected('snowflake'),
+        'ghl': datasource_connected('ghl'),
+    }
 
 
 def _public_view(conn: Dict[str, Any]) -> Dict[str, Any]:
@@ -314,7 +334,11 @@ def update_connection(connection_id: str, req: ConnectionUpdate, user: str = Dep
 
 
 @router.post('/{connection_id}/test')
-def test_connection(connection_id: str, user: str = Depends(get_current_user)):
+def test_connection(
+    connection_id: str,
+    req: TestConnectionRequest = TestConnectionRequest(),
+    user: str = Depends(get_current_user),
+):
     """Attempt a live connection using the stored credentials"""
     connections = _load_connections()
     conn = next((c for c in connections if c['id'] == connection_id), None)
@@ -322,6 +346,8 @@ def test_connection(connection_id: str, user: str = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail='Connection not found')
 
     config = _decrypt_config(conn['config'])
+    if conn['type'] == 'snowflake' and req.passcode:
+        config = {**config, 'passcode': req.passcode.strip()}
     now = datetime.now(timezone.utc).isoformat()
 
     try:
@@ -346,6 +372,13 @@ def test_connection(connection_id: str, user: str = Depends(get_current_user)):
         conn['last_tested'] = now
         _save_connections(connections)
 
+        detail = str(e)[:500]
+        if conn['type'] == 'snowflake' and ('TOTP' in detail or 'passcode' in detail.lower()):
+            detail += (
+                ' — Enter a fresh 6-digit MFA code from your authenticator '
+                '(codes expire every ~30 seconds).'
+            )
+
         hipaa_manager.log_audit_event('connection_test_failed', {
             'connection_id': connection_id,
             'type': conn['type'],
@@ -353,7 +386,7 @@ def test_connection(connection_id: str, user: str = Depends(get_current_user)):
             'user': hipaa_manager.mask_sensitive_data(user),
             'timestamp': now,
         })
-        return {'status': 'error', 'detail': str(e)[:500], 'last_tested': now}
+        return {'status': 'error', 'detail': detail, 'last_tested': now}
 
 
 @router.delete('/{connection_id}')

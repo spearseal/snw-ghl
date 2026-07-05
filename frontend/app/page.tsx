@@ -17,12 +17,19 @@ interface QueryResponse {
   answer: string;
   results: QueryResult[];
   total_chunks: number;
+  searched_sources?: string[];
+  indexed_sources?: string[];
+  connected_sources?: Record<string, boolean>;
+  load_errors?: Record<string, string>;
 }
 
 interface HealthResponse {
   status: string;
   indexed_chunks: number;
   last_indexed: string | null;
+  connected_sources?: Record<string, boolean>;
+  indexed_sources?: string[];
+  source_chunks?: Record<string, number>;
 }
 
 interface Connection {
@@ -32,7 +39,12 @@ interface Connection {
 }
 
 function formatRefreshError(data: {
-  detail?: string | { message?: string; errors?: Record<string, string>; skipped?: Record<string, string>; hint?: string };
+  detail?: string | {
+    message?: string;
+    errors?: Record<string, string>;
+    skipped?: Record<string, string>;
+    hint?: string;
+  };
 }): string {
   const detail = data.detail;
   if (typeof detail === 'string') return detail;
@@ -51,6 +63,11 @@ function formatRefreshError(data: {
   return parts.join('\n');
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  snowflake: 'Snowflake',
+  ghl: 'GoHighLevel',
+};
+
 export default function Home() {
   const router = useRouter();
   const [question, setQuestion] = useState('');
@@ -61,6 +78,14 @@ export default function Home() {
   const [response, setResponse] = useState<QueryResponse | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [snowflakePasscode, setSnowflakePasscode] = useState('');
+
+  const snowflakeConnected = connections.some(
+    (c) => c.type === 'snowflake' && c.status === 'connected'
+  );
+  const ghlConnected = connections.some(
+    (c) => c.type === 'ghl' && c.status === 'connected'
+  );
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -93,13 +118,15 @@ export default function Home() {
     setRefreshing(true);
     setError(null);
     try {
-      const hasGhl = connections.some((c) => c.type === 'ghl');
-      const hasSnowflake = connections.some((c) => c.type === 'snowflake');
+      if (snowflakeConnected && !snowflakePasscode.trim()) {
+        throw new Error(
+          'Enter your current Snowflake MFA code (6 digits from your authenticator app).'
+        );
+      }
       const res = await apiFetch('/api/index/refresh', {
         method: 'POST',
         body: JSON.stringify({
-          include_ghl: hasGhl,
-          include_snowflake: hasSnowflake || connections.length === 0,
+          snowflake_passcode: snowflakePasscode.trim() || undefined,
           limit_per_entity: 500,
         }),
       });
@@ -107,6 +134,7 @@ export default function Home() {
       if (!res.ok) {
         throw new Error(formatRefreshError(data));
       }
+      setSnowflakePasscode('');
       await fetchHealth();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Index refresh failed');
@@ -118,14 +146,36 @@ export default function Home() {
   const runQuery = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!question.trim()) return;
+
+    if (!snowflakeConnected && !ghlConnected) {
+      setError(
+        'No data sources connected. Go to DB Connectors and test your Snowflake and/or GoHighLevel connection first.'
+      );
+      return;
+    }
+
+    if (snowflakeConnected && !snowflakePasscode.trim()) {
+      setError(
+        'Enter your current Snowflake MFA code — data is loaded from connected sources when you query.'
+      );
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResponse(null);
     try {
       const res = await apiFetch('/api/query', {
         method: 'POST',
-        body: JSON.stringify({ question, top_k: 5, mask_phi: maskPhi }),
-      });
+        body: JSON.stringify({
+          question,
+          top_k: 5,
+          mask_phi: maskPhi,
+          load_fresh: true,
+          limit_per_entity: 500,
+          snowflake_passcode: snowflakePasscode.trim() || undefined,
+        }),
+      }, 120_000);
       const data = await res.json();
       if (!res.ok) {
         throw new Error(
@@ -133,6 +183,8 @@ export default function Home() {
         );
       }
       setResponse(data);
+      setSnowflakePasscode('');
+      await fetchHealth();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Query failed');
     } finally {
@@ -140,47 +192,98 @@ export default function Home() {
     }
   };
 
+  const connectedList = [
+    snowflakeConnected && 'Snowflake',
+    ghlConnected && 'GoHighLevel',
+  ].filter(Boolean);
+
   return (
     <main className="mx-auto max-w-4xl px-6 py-8">
       <div className="mb-6">
         <h1 className="text-xl font-semibold">Query Console</h1>
         <p className="text-sm text-slate-400">
-          Ask questions across GoHighLevel and Snowflake data
+          Ask natural-language questions. Data is loaded from each connected source
+          into memory, then searched independently.
         </p>
       </div>
 
-      {/* Index status bar */}
-      <div className="mb-6 flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
-        <div className="text-sm text-slate-300">
-          {health ? (
-            <>
-              <span className="font-medium">{health.indexed_chunks}</span>{' '}
-              chunks indexed
-              {health.last_indexed && (
-                <span className="text-slate-500">
-                  {' '}
-                  · updated {new Date(health.last_indexed + 'Z').toLocaleString()}
-                </span>
+      {/* Connected sources + memory status */}
+      <div className="mb-6 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-slate-500">Connected:</span>
+              {connectedList.length > 0 ? (
+                connectedList.map((name) => (
+                  <span
+                    key={name}
+                    className="rounded-full border border-emerald-700/50 bg-emerald-900/30 px-2.5 py-0.5 text-xs text-emerald-300"
+                  >
+                    {name}
+                  </span>
+                ))
+              ) : (
+                <span className="text-amber-400 text-xs">None — connect in DB Connectors</span>
               )}
-            </>
-          ) : (
-            <span className="text-amber-400">
-              Backend unreachable — start the API on port 8000
-            </span>
-          )}
+            </div>
+            <div className="text-sm text-slate-300">
+              {health ? (
+                <>
+                  <span className="font-medium">{health.indexed_chunks}</span> chunks
+                  in memory
+                  {health.indexed_sources && health.indexed_sources.length > 0 && (
+                    <span className="text-slate-500">
+                      {' '}
+                      ({health.indexed_sources.map((s) => SOURCE_LABELS[s] || s).join(', ')})
+                    </span>
+                  )}
+                  {health.last_indexed && (
+                    <span className="text-slate-500">
+                      {' '}
+                      · updated {new Date(health.last_indexed + 'Z').toLocaleString()}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="text-amber-400">Backend unreachable</span>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={refreshIndex}
+            disabled={refreshing || (!snowflakeConnected && !ghlConnected)}
+            className="flex shrink-0 items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
+            title="Manually reload connected sources into memory"
+          >
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Refresh Memory
+          </button>
         </div>
-        <button
-          onClick={refreshIndex}
-          disabled={refreshing}
-          className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
-        >
-          {refreshing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Refresh Index
-        </button>
+        {snowflakeConnected && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
+            <label htmlFor="snowflake-mfa" className="text-xs text-slate-400">
+              Snowflake MFA code
+            </label>
+            <input
+              id="snowflake-mfa"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={snowflakePasscode}
+              onChange={(e) => setSnowflakePasscode(e.target.value.replace(/\D/g, ''))}
+              placeholder="6-digit code"
+              className="w-32 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-sm text-slate-100 outline-none focus:border-indigo-500"
+            />
+            <span className="text-xs text-slate-500">
+              Required to load Snowflake data (expires every ~30s)
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Query input */}
@@ -192,7 +295,7 @@ export default function Home() {
               type="text"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="e.g. Which contacts have open opportunities?"
+              placeholder="e.g. Show contacts from Snowflake with open opportunities"
               className="w-full rounded-xl border border-slate-700 bg-slate-900 py-3 pl-11 pr-4 text-slate-100 placeholder-slate-500 outline-none transition focus:border-indigo-500"
             />
           </div>
@@ -234,6 +337,14 @@ export default function Home() {
               <p className="text-sm font-medium text-indigo-200">
                 {response.answer}
               </p>
+              {response.searched_sources && response.searched_sources.length > 0 && (
+                <p className="mt-1 text-xs text-indigo-300/70">
+                  Searched:{' '}
+                  {response.searched_sources
+                    .map((s) => SOURCE_LABELS[s] || s)
+                    .join(', ')}
+                </p>
+              )}
             </div>
 
             {response.results.map((r, i) => (
@@ -242,8 +353,14 @@ export default function Home() {
                 className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
               >
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="rounded-full bg-slate-800 px-2.5 py-1 uppercase tracking-wide text-slate-300">
-                    {r.source}
+                  <span
+                    className={`rounded-full px-2.5 py-1 uppercase tracking-wide ${
+                      r.source === 'snowflake'
+                        ? 'bg-sky-900/40 text-sky-300'
+                        : 'bg-indigo-900/40 text-indigo-300'
+                    }`}
+                  >
+                    {SOURCE_LABELS[r.source] || r.source}
                   </span>
                   <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-400">
                     {r.entity}
@@ -267,7 +384,8 @@ export default function Home() {
 
         {!response && !error && (
           <div className="rounded-xl border border-dashed border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
-            Results will appear here. Refresh the index, then ask a question.
+            Connect Snowflake and/or GoHighLevel, enter MFA if needed, then ask a
+            question. Data loads automatically from each connected source.
           </div>
         )}
       </section>

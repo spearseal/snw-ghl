@@ -23,7 +23,11 @@ export function clearSession() {
 
 const API_TIMEOUT_MS = 30_000;
 
-export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+export async function apiFetch(
+  path: string,
+  options: RequestInit = {},
+  timeoutMs: number = API_TIMEOUT_MS,
+): Promise<Response> {
   const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -32,7 +36,7 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   let res: Response;
   try {

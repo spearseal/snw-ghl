@@ -49,6 +49,7 @@ export default function ConnectorsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
+  const [testPasscodes, setTestPasscodes] = useState<Record<string, string>>({});
   const [testResults, setTestResults] = useState<Record<string, string>>({});
 
   const [showForm, setShowForm] = useState(false);
@@ -104,11 +105,22 @@ export default function ConnectorsPage() {
     loadConnections();
   }, [router, loadConnections]);
 
-  const testConnection = async (id: string) => {
+  const testConnection = async (id: string, type: 'snowflake' | 'ghl') => {
+    const passcode = testPasscodes[id]?.trim();
+    if (type === 'snowflake' && !passcode) {
+      setTestResults((prev) => ({
+        ...prev,
+        [id]: 'Enter a fresh 6-digit MFA code before testing.',
+      }));
+      return;
+    }
     setTesting(id);
     try {
       const res = await apiFetch(`/api/connections/${id}/test`, {
         method: 'POST',
+        body: JSON.stringify(
+          type === 'snowflake' ? { passcode } : {}
+        ),
       });
       const data = await res.json();
       setTestResults((prev) => ({ ...prev, [id]: data.detail }));
@@ -120,13 +132,15 @@ export default function ConnectorsPage() {
         )
       );
       if (data.status === 'connected') {
+        setTestPasscodes((prev) => ({ ...prev, [id]: '' }));
         try {
           await apiFetch('/api/index/refresh', {
             method: 'POST',
             body: JSON.stringify({
-              include_ghl: true,
-              include_snowflake: true,
+              include_ghl: type === 'ghl',
+              include_snowflake: type === 'snowflake',
               limit_per_entity: 500,
+              snowflake_passcode: type === 'snowflake' ? passcode : undefined,
             }),
           });
         } catch {
@@ -374,8 +388,25 @@ export default function ConnectorsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {c.type === 'snowflake' && (
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      value={testPasscodes[c.id] || ''}
+                      onChange={(e) =>
+                        setTestPasscodes((prev) => ({
+                          ...prev,
+                          [c.id]: e.target.value.replace(/\D/g, ''),
+                        }))
+                      }
+                      placeholder="MFA code"
+                      className="w-24 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 font-mono text-xs text-slate-100 outline-none focus:border-indigo-500"
+                    />
+                  )}
                   <button
-                    onClick={() => testConnection(c.id)}
+                    onClick={() => testConnection(c.id, c.type)}
                     disabled={testing === c.id}
                     className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-700 disabled:opacity-50"
                   >

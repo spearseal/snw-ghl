@@ -20,11 +20,16 @@ from pydantic import BaseModel, Field
 from auth import get_current_user
 from auth import router as auth_router
 from config import settings
-from connections import datasource_configured, get_active_config, _seed_defaults
+from connections import (
+    datasource_connected,
+    get_active_config,
+    get_connected_sources,
+    _seed_defaults,
+)
 from connections import router as connections_router
 from ghl_client import GHLClient
 from hipaa_compliance import hipaa_manager
-from query_engine import QueryEngine
+from query_engine import QueryEngine, detect_query_sources
 from snowflake_loader import SnowflakeLoader
 from snowflake_reader import SnowflakeReader
 
@@ -62,35 +67,32 @@ class QueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     top_k: int = Field(default=5, ge=1, le=25)
     mask_phi: bool = True
+    load_fresh: bool = True
+    limit_per_entity: int = Field(default=500, ge=1, le=5000)
+    snowflake_passcode: Optional[str] = Field(default=None, max_length=10)
 
 
 class RefreshRequest(BaseModel):
-    include_ghl: bool = True
-    include_snowflake: bool = True
+    include_ghl: Optional[bool] = None
+    include_snowflake: Optional[bool] = None
     limit_per_entity: int = Field(default=500, ge=1, le=5000)
+    snowflake_passcode: Optional[str] = Field(default=None, max_length=10)
 
 
-@app.get('/api/health')
-def health():
-    return {
-        'status': 'ok',
-        'indexed_chunks': len(engine.chunks),
-        'last_indexed': engine.last_indexed,
-        'timestamp': datetime.utcnow().isoformat(),
-    }
+def _fetch_datasets(
+    include_ghl: bool,
+    include_snowflake: bool,
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+) -> tuple[dict, dict, dict]:
+    """Fetch data from independent connected sources into memory-ready datasets."""
+    datasets: dict = {}
+    errors: dict = {}
+    skipped: dict = {}
 
-
-@app.post('/api/index/refresh')
-def refresh_index(req: RefreshRequest, user: str = Depends(get_current_user)):
-    """Fetch data from GHL and/or Snowflake and rebuild the query index"""
-    _seed_defaults()
-    datasets = {}
-    errors = {}
-    skipped = {}
-
-    if req.include_ghl:
-        if not datasource_configured('ghl'):
-            skipped['ghl'] = 'No GoHighLevel connection configured'
+    if include_ghl:
+        if not datasource_connected('ghl'):
+            skipped['ghl'] = 'GoHighLevel is not connected'
         else:
             try:
                 ghl = GHLClient(get_active_config('ghl'))
@@ -99,22 +101,70 @@ def refresh_index(req: RefreshRequest, user: str = Depends(get_current_user)):
                 logger.error(f"GHL fetch failed: {e}")
                 errors['ghl'] = str(e)
 
-    if req.include_snowflake:
-        if not datasource_configured('snowflake'):
-            skipped['snowflake'] = 'No Snowflake connection configured'
+    if include_snowflake:
+        if not datasource_connected('snowflake'):
+            skipped['snowflake'] = 'Snowflake is not connected'
         else:
-            reader = SnowflakeReader(get_active_config('snowflake'))
+            sf_config = dict(get_active_config('snowflake') or {})
+            if snowflake_passcode:
+                sf_config['passcode'] = snowflake_passcode.strip()
+            reader = SnowflakeReader(sf_config)
             try:
                 reader.connect()
-                datasets['snowflake'] = reader.fetch_all(req.limit_per_entity)
+                datasets['snowflake'] = reader.fetch_all(limit_per_entity)
             except Exception as e:
                 logger.error(f"Snowflake fetch failed: {e}")
-                errors['snowflake'] = str(e)
+                msg = str(e)
+                if 'TOTP' in msg or 'passcode' in msg.lower():
+                    msg += (
+                        ' — Enter a fresh 6-digit MFA code from your authenticator '
+                        '(codes expire every ~30 seconds).'
+                    )
+                errors['snowflake'] = msg
             finally:
                 try:
                     reader.disconnect()
                 except Exception:
                     pass
+
+    return datasets, errors, skipped
+
+
+@app.get('/api/health')
+def health():
+    connected = get_connected_sources()
+    source_chunks = {
+        source: sum(1 for c in engine.chunks if c['source'] == source)
+        for source in ('snowflake', 'ghl')
+    }
+    return {
+        'status': 'ok',
+        'indexed_chunks': len(engine.chunks),
+        'last_indexed': engine.last_indexed,
+        'connected_sources': connected,
+        'indexed_sources': engine.get_indexed_sources(),
+        'source_chunks': source_chunks,
+        'record_counts': engine.record_counts,
+        'timestamp': datetime.utcnow().isoformat(),
+    }
+
+
+@app.post('/api/index/refresh')
+def refresh_index(req: RefreshRequest, user: str = Depends(get_current_user)):
+    """Fetch data from connected GHL and/or Snowflake sources and rebuild the in-memory index"""
+    _seed_defaults()
+    connected = get_connected_sources()
+    include_ghl = req.include_ghl if req.include_ghl is not None else connected['ghl']
+    include_snowflake = (
+        req.include_snowflake if req.include_snowflake is not None else connected['snowflake']
+    )
+
+    datasets, errors, skipped = _fetch_datasets(
+        include_ghl=include_ghl,
+        include_snowflake=include_snowflake,
+        snowflake_passcode=req.snowflake_passcode,
+        limit_per_entity=req.limit_per_entity,
+    )
 
     if not datasets:
         raise HTTPException(
@@ -123,15 +173,16 @@ def refresh_index(req: RefreshRequest, user: str = Depends(get_current_user)):
                 'message': 'No data sources available',
                 'errors': errors,
                 'skipped': skipped,
+                'connected_sources': connected,
                 'hint': (
-                    'Ensure Snowflake env vars (including SNOWFLAKE_PASSCODE for MFA) '
-                    'are set in GCP, or mount persistent storage at DATA_DIR so '
-                    'connector credentials survive restarts.'
+                    'Connect Snowflake and/or GoHighLevel in DB Connectors first. '
+                    'For Snowflake MFA, enter a fresh TOTP code (expires every ~30s). '
+                    'Each source is independent — only connected sources are loaded.'
                 ),
             },
         )
 
-    engine.index_data(datasets)
+    engine.index_data(datasets, merge=True)
 
     counts = {
         source: {entity: len(records) for entity, records in entities.items()}
@@ -145,14 +196,69 @@ def refresh_index(req: RefreshRequest, user: str = Depends(get_current_user)):
         'record_counts': counts,
         'errors': errors,
         'skipped': skipped,
+        'indexed_sources': engine.get_indexed_sources(),
     }
 
 
 @app.post('/api/query')
 def query(req: QueryRequest, user: str = Depends(get_current_user)):
-    """Answer a free-text question over the indexed GHL + Snowflake data"""
+    """Load data from connected sources into memory, then answer a natural-language question"""
+    _seed_defaults()
+    connected = get_connected_sources()
+    load_errors: dict = {}
+    load_skipped: dict = {}
+
+    if not connected['ghl'] and not connected['snowflake']:
+        return {
+            'answer': (
+                'No data sources connected. Go to DB Connectors, test your Snowflake '
+                'and/or GoHighLevel connection, then ask a question here.'
+            ),
+            'results': [],
+            'total_chunks': len(engine.chunks),
+            'connected_sources': connected,
+            'indexed_sources': engine.get_indexed_sources(),
+            'load_errors': load_errors,
+        }
+
+    if req.load_fresh:
+        if connected['snowflake'] and not (req.snowflake_passcode or '').strip():
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    'Snowflake is connected. Enter a fresh 6-digit MFA code before querying '
+                    'so data can be loaded into memory.'
+                ),
+            )
+
+        datasets, load_errors, load_skipped = _fetch_datasets(
+            include_ghl=connected['ghl'],
+            include_snowflake=connected['snowflake'],
+            snowflake_passcode=req.snowflake_passcode,
+            limit_per_entity=req.limit_per_entity,
+        )
+        if datasets:
+            engine.index_data(datasets, merge=True)
+
+    indexed = engine.get_indexed_sources()
+    search_sources = detect_query_sources(req.question, indexed)
+
     try:
-        return engine.query(req.question, top_k=req.top_k, mask_phi=req.mask_phi)
+        result = engine.query(
+            req.question,
+            top_k=req.top_k,
+            mask_phi=req.mask_phi,
+            sources=search_sources,
+        )
+        result['connected_sources'] = connected
+        result['load_errors'] = load_errors
+        result['load_skipped'] = load_skipped
+        if load_errors and result['results']:
+            result['answer'] += ' (Some sources failed to load; showing available data.)'
+        elif load_errors and not result['results']:
+            failed = '; '.join(f'{k}: {v}' for k, v in load_errors.items())
+            result['answer'] = f'Could not load data into memory. {failed}'
+        return result
     except Exception as e:
         logger.error(f"Query failed: {e}")
         hipaa_manager.log_audit_event('query_failed', {
