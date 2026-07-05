@@ -229,7 +229,7 @@ export default function Home() {
             top_k: 5,
             mask_phi: maskPhi,
             load_fresh: true,
-            limit_per_entity: 500,
+            limit_per_entity: 200,
             snowflake_passcode: snowflakePasscode.trim() || undefined,
           }),
         }, 120_000);

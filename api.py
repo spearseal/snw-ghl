@@ -9,7 +9,8 @@ Endpoints:
 """
 import logging
 import os
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -28,6 +29,7 @@ from connections import (
     _seed_defaults,
 )
 from connections import router as connections_router
+from ghl_client import GHLClient
 from email_followup import (
     EmailSettings,
     SendFollowupRequest,
@@ -71,6 +73,41 @@ app.include_router(auth_router)
 app.include_router(connections_router)
 
 engine = QueryEngine()
+
+INDEX_TTL_SECONDS = int(os.environ.get('INDEX_TTL_SECONDS', '300'))
+
+
+def _index_fresh_for_source(source: str) -> bool:
+    """True when in-memory chunks for this source are younger than INDEX_TTL_SECONDS."""
+    if source not in engine.get_indexed_sources():
+        return False
+    if not engine.last_indexed or not any(c['source'] == source for c in engine.chunks):
+        return False
+    try:
+        last = datetime.fromisoformat(engine.last_indexed.replace('Z', '+00:00'))
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - last).total_seconds()
+        return age < INDEX_TTL_SECONDS
+    except (ValueError, TypeError):
+        return False
+
+
+def _sources_needing_refresh(
+    connected: Dict[str, bool],
+    load_fresh: bool,
+    snowflake_passcode: Optional[str],
+) -> Dict[str, bool]:
+    """Decide per-source whether to re-fetch before query (skip when cache is fresh)."""
+    if not load_fresh:
+        return {'ghl': False, 'snowflake': False}
+    force_sf = bool((snowflake_passcode or '').strip())
+    return {
+        'ghl': connected.get('ghl', False) and not _index_fresh_for_source('ghl'),
+        'snowflake': connected.get('snowflake', False) and (
+            force_sf or not _index_fresh_for_source('snowflake')
+        ),
+    }
 
 
 class QueryRequest(BaseModel):
@@ -140,6 +177,7 @@ def smart_query(req: SmartQueryRequest, user: str = Depends(get_current_user)):
     load_errors: Dict[str, str] = {}
     load_skipped: Dict[str, str] = {}
     results_by_source: Dict[str, Dict[str, Any]] = {}
+    used_cached_index = False
 
     if not connected['ghl'] and not connected['snowflake']:
         return {
@@ -156,61 +194,94 @@ def smart_query(req: SmartQueryRequest, user: str = Depends(get_current_user)):
         }
 
     if req.load_fresh:
-        datasets, load_errors, load_skipped = _fetch_datasets(
-            include_ghl=connected['ghl'],
-            include_snowflake=connected['snowflake'],
-            snowflake_passcode=req.snowflake_passcode,
-            limit_per_entity=req.limit_per_entity,
+        refresh_plan = _sources_needing_refresh(
+            connected, req.load_fresh, req.snowflake_passcode
         )
-        if datasets:
-            engine.index_data(datasets, merge=True)
+        if refresh_plan['ghl'] or refresh_plan['snowflake']:
+            datasets, fetch_errors, load_skipped = _fetch_datasets(
+                include_ghl=refresh_plan['ghl'],
+                include_snowflake=refresh_plan['snowflake'],
+                snowflake_passcode=req.snowflake_passcode,
+                limit_per_entity=req.limit_per_entity,
+            )
+            load_errors.update(fetch_errors)
+            if datasets:
+                engine.index_data(datasets, merge=True)
+        else:
+            used_cached_index = True
+            load_skipped = {
+                k: 'Using cached in-memory index (refresh skipped)'
+                for k, v in connected.items()
+                if v and _index_fresh_for_source(k)
+            }
 
     available = [s for s in ('snowflake', 'ghl') if connected.get(s)]
     sources_queried = detect_query_sources(req.question, available)
 
-    if 'snowflake' in sources_queried and connected['snowflake']:
+    # Ensure GHL memory has data before BM25 search (lazy load if cache was skipped).
+    if (
+        'ghl' in sources_queried
+        and connected['ghl']
+        and not any(c['source'] == 'ghl' for c in engine.chunks)
+    ):
+        ghl_data, ghl_errors, _ = _fetch_datasets(
+            include_ghl=True,
+            include_snowflake=False,
+            limit_per_entity=req.limit_per_entity,
+        )
+        load_errors.update(ghl_errors)
+        if ghl_data:
+            engine.index_data(ghl_data, merge=True)
+
+    def _run_snowflake() -> None:
+        nonlocal load_errors
+        if 'snowflake' not in sources_queried or not connected['snowflake']:
+            return
         sf_config = dict(get_active_config('snowflake') or {})
         if snowflake_requires_passcode(sf_config) and not (req.snowflake_passcode or '').strip():
             load_errors['snowflake'] = (
                 'Snowflake uses password + MFA. Enter a fresh 6-digit code, or switch '
                 'to key-pair authentication in DB Connectors.'
             )
-        else:
-            reader = None
-            try:
-                if req.snowflake_passcode:
-                    sf_config['passcode'] = req.snowflake_passcode.strip()
-                reader = SnowflakeReader(sf_config)
-                reader.connect(passcode=req.snowflake_passcode)
-                agent = SnowflakeAgent(reader)
-                sf_result = agent.query(
-                    req.question,
-                    limit=req.limit,
-                    mask_phi=req.mask_phi,
+            return
+        reader = None
+        try:
+            if req.snowflake_passcode:
+                sf_config['passcode'] = req.snowflake_passcode.strip()
+            reader = SnowflakeReader(sf_config)
+            reader.connect(passcode=req.snowflake_passcode)
+            agent = SnowflakeAgent(reader)
+            sf_result = agent.query(
+                req.question,
+                limit=req.limit,
+                mask_phi=req.mask_phi,
+            )
+            results_by_source['snowflake'] = {
+                'datasource': SOURCE_LABELS['snowflake'],
+                **sf_result,
+            }
+        except Exception as e:
+            logger.error(f"Snowflake smart query failed: {e}")
+            msg = str(e)
+            if snowflake_requires_passcode(sf_config) and (
+                'TOTP' in msg or 'passcode' in msg.lower()
+            ):
+                msg += (
+                    ' — Enter a fresh 6-digit MFA code from your authenticator, '
+                    'or switch to key-pair auth.'
                 )
-                results_by_source['snowflake'] = {
-                    'datasource': SOURCE_LABELS['snowflake'],
-                    **sf_result,
-                }
-            except Exception as e:
-                logger.error(f"Snowflake smart query failed: {e}")
-                msg = str(e)
-                if snowflake_requires_passcode(sf_config) and (
-                    'TOTP' in msg or 'passcode' in msg.lower()
-                ):
-                    msg += (
-                        ' — Enter a fresh 6-digit MFA code from your authenticator, '
-                        'or switch to key-pair auth.'
-                    )
-                load_errors['snowflake'] = msg
-            finally:
-                if reader:
-                    try:
-                        reader.disconnect()
-                    except Exception:
-                        pass
+            load_errors['snowflake'] = msg
+        finally:
+            if reader:
+                try:
+                    reader.disconnect()
+                except Exception:
+                    pass
 
-    if 'ghl' in sources_queried and connected['ghl']:
+    def _run_ghl() -> None:
+        nonlocal load_errors
+        if 'ghl' not in sources_queried or not connected['ghl']:
+            return
         try:
             ghl_result = engine.query(
                 req.question,
@@ -231,6 +302,15 @@ def smart_query(req: SmartQueryRequest, user: str = Depends(get_current_user)):
             logger.error(f"GHL smart query failed: {e}")
             load_errors['ghl'] = str(e)
 
+    query_futures = []
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        if 'snowflake' in sources_queried and connected['snowflake']:
+            query_futures.append(pool.submit(_run_snowflake))
+        if 'ghl' in sources_queried and connected['ghl']:
+            query_futures.append(pool.submit(_run_ghl))
+        for fut in as_completed(query_futures):
+            fut.result()
+
     answer = _build_combined_answer(results_by_source, sources_queried, load_errors)
 
     hipaa_manager.log_audit_event('smart_query_executed', {
@@ -248,6 +328,7 @@ def smart_query(req: SmartQueryRequest, user: str = Depends(get_current_user)):
         'results_by_source': results_by_source,
         'load_errors': load_errors or None,
         'load_skipped': load_skipped or None,
+        'used_cached_index': used_cached_index,
         'total_chunks': len(engine.chunks),
     }
 
@@ -278,79 +359,110 @@ def _snowflake_reader_from_active(passcode: Optional[str] = None) -> SnowflakeRe
     return reader
 
 
+def _fetch_ghl_dataset(limit_per_entity: int) -> tuple[Optional[dict], dict]:
+    errors: dict = {}
+    if not datasource_connected('ghl'):
+        return None, errors
+    try:
+        ghl = GHLClient(get_active_config('ghl'))
+        ghl_data, ghl_entity_errors = ghl.get_all_data()
+        for entity, msg in ghl_entity_errors.items():
+            errors[f'ghl.{entity}'] = msg
+        return {'ghl': ghl_data}, errors
+    except Exception as e:
+        logger.error(f"GHL fetch failed: {e}")
+        errors['ghl'] = str(e)
+        return None, errors
+
+
+def _fetch_snowflake_dataset(
+    snowflake_passcode: Optional[str],
+    limit_per_entity: int,
+) -> tuple[Optional[dict], dict]:
+    errors: dict = {}
+    if not datasource_connected('snowflake'):
+        return None, errors
+    sf_config = dict(get_active_config('snowflake') or {})
+    if snowflake_passcode:
+        sf_config['passcode'] = snowflake_passcode.strip()
+    reader = SnowflakeReader(sf_config)
+    try:
+        reader.connect(passcode=snowflake_passcode)
+        snowflake_data, table_errors = reader.fetch_all(limit_per_entity)
+        for entity, msg in table_errors.items():
+            errors[f'snowflake.{entity}'] = msg
+        total_rows = sum(len(rows) for rows in snowflake_data.values())
+        if total_rows == 0 and not table_errors:
+            custom = (sf_config.get('custom_tables') or '').strip()
+            table_list = (
+                custom
+                if custom
+                else ', '.join(SnowflakeReader.GHL_TABLES.values())
+            )
+            errors['snowflake'] = (
+                f'Connected but all tables are empty ({table_list}). '
+                'Add rows in Snowflake or set custom_tables on the connection.'
+            )
+        elif total_rows == 0 and table_errors:
+            expected = ', '.join(reader.tables_to_fetch().values())
+            errors['snowflake'] = (
+                'Connected but could not read tables. Expected in your '
+                f'database/schema: {expected}. See snowflake.<table> errors for details.'
+            )
+        return {'snowflake': snowflake_data}, errors
+    except Exception as e:
+        logger.error(f"Snowflake fetch failed: {e}")
+        msg = str(e)
+        if snowflake_requires_passcode(sf_config) and (
+            'TOTP' in msg or 'passcode' in msg.lower()
+        ):
+            msg += (
+                ' — Enter a fresh 6-digit MFA code from your authenticator '
+                '(codes expire every ~30 seconds), or switch to key-pair auth.'
+            )
+        errors['snowflake'] = msg
+        return None, errors
+    finally:
+        try:
+            reader.disconnect()
+        except Exception:
+            pass
+
+
 def _fetch_datasets(
     include_ghl: bool,
     include_snowflake: bool,
     snowflake_passcode: Optional[str] = None,
     limit_per_entity: int = 500,
 ) -> tuple[dict, dict, dict]:
-    """Fetch data from independent connected sources into memory-ready datasets."""
+    """Fetch data from connected sources in parallel into memory-ready datasets."""
     datasets: dict = {}
     errors: dict = {}
     skipped: dict = {}
 
-    if include_ghl:
-        if not datasource_connected('ghl'):
-            skipped['ghl'] = 'GoHighLevel is not connected'
-        else:
-            try:
-                ghl = GHLClient(get_active_config('ghl'))
-                ghl_data, ghl_entity_errors = ghl.get_all_data()
-                datasets['ghl'] = ghl_data
-                for entity, msg in ghl_entity_errors.items():
-                    errors[f'ghl.{entity}'] = msg
-            except Exception as e:
-                logger.error(f"GHL fetch failed: {e}")
-                errors['ghl'] = str(e)
+    if not include_ghl:
+        skipped['ghl'] = 'GoHighLevel refresh not requested'
+    elif not datasource_connected('ghl'):
+        skipped['ghl'] = 'GoHighLevel is not connected'
 
-    if include_snowflake:
-        if not datasource_connected('snowflake'):
-            skipped['snowflake'] = 'Snowflake is not connected'
-        else:
-            sf_config = dict(get_active_config('snowflake') or {})
-            if snowflake_passcode:
-                sf_config['passcode'] = snowflake_passcode.strip()
-            reader = SnowflakeReader(sf_config)
-            try:
-                reader.connect(passcode=snowflake_passcode)
-                snowflake_data, table_errors = reader.fetch_all(limit_per_entity)
-                datasets['snowflake'] = snowflake_data
-                for entity, msg in table_errors.items():
-                    errors[f'snowflake.{entity}'] = msg
-                total_rows = sum(len(rows) for rows in snowflake_data.values())
-                if total_rows == 0 and not table_errors:
-                    custom = (sf_config.get('custom_tables') or '').strip()
-                    table_list = (
-                        custom
-                        if custom
-                        else ', '.join(SnowflakeReader.GHL_TABLES.values())
-                    )
-                    errors['snowflake'] = (
-                        f'Connected but all tables are empty ({table_list}). '
-                        'Add rows in Snowflake or set custom_tables on the connection.'
-                    )
-                elif total_rows == 0 and table_errors:
-                    expected = ', '.join(reader.tables_to_fetch().values())
-                    errors['snowflake'] = (
-                        'Connected but could not read tables. Expected in your '
-                        f'database/schema: {expected}. See snowflake.<table> errors for details.'
-                    )
-            except Exception as e:
-                logger.error(f"Snowflake fetch failed: {e}")
-                msg = str(e)
-                if snowflake_requires_passcode(sf_config) and (
-                    'TOTP' in msg or 'passcode' in msg.lower()
-                ):
-                    msg += (
-                        ' — Enter a fresh 6-digit MFA code from your authenticator '
-                        '(codes expire every ~30 seconds), or switch to key-pair auth.'
-                    )
-                errors['snowflake'] = msg
-            finally:
-                try:
-                    reader.disconnect()
-                except Exception:
-                    pass
+    if not include_snowflake:
+        skipped['snowflake'] = 'Snowflake refresh not requested'
+    elif not datasource_connected('snowflake'):
+        skipped['snowflake'] = 'Snowflake is not connected'
+
+    futures = {}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        if include_ghl and datasource_connected('ghl'):
+            futures['ghl'] = pool.submit(_fetch_ghl_dataset, limit_per_entity)
+        if include_snowflake and datasource_connected('snowflake'):
+            futures['snowflake'] = pool.submit(
+                _fetch_snowflake_dataset, snowflake_passcode, limit_per_entity
+            )
+        for key, fut in futures.items():
+            partial, partial_errors = fut.result()
+            errors.update(partial_errors)
+            if partial:
+                datasets.update(partial)
 
     return datasets, errors, skipped
 

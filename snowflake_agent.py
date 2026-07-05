@@ -5,6 +5,7 @@ and answers natural-language prompts with read-only SQL.
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -14,6 +15,9 @@ from hipaa_compliance import hipaa_manager
 from snowflake_schema import discover_schema
 
 logger = logging.getLogger(__name__)
+
+_SCHEMA_CACHE: Dict[str, Tuple[Dict[str, Any], float]] = {}
+_SCHEMA_TTL_SECONDS = 600
 
 _COUNT_RE = re.compile(r'\b(how many|total|count|number of)\b', re.I)
 _BROAD_RE = re.compile(r'\b(all columns|everything|full details|complete record|entire row)\b', re.I)
@@ -317,8 +321,19 @@ class SnowflakeAgent:
         self.schema: Optional[Dict[str, Any]] = None
 
     def analyze_schema(self, refresh: bool = False) -> Dict[str, Any]:
-        if self.schema is None or refresh:
+        database = (self.reader.config.get('database') or settings.snowflake_database or '').strip()
+        schema_name = (self.reader.config.get('schema') or settings.snowflake_schema or '').strip()
+        cache_key = f'{database}.{schema_name}'.upper()
+
+        if not refresh and cache_key in _SCHEMA_CACHE:
+            cached, ts = _SCHEMA_CACHE[cache_key]
+            if time.time() - ts < _SCHEMA_TTL_SECONDS:
+                self.schema = cached
+                return self.schema
+
+        if self.schema is None or refresh or cache_key not in _SCHEMA_CACHE:
             self.schema = discover_schema(self.reader)
+            _SCHEMA_CACHE[cache_key] = (self.schema, time.time())
         return self.schema
 
     def query(
@@ -327,7 +342,7 @@ class SnowflakeAgent:
         limit: int = 100,
         mask_phi: bool = True,
     ) -> Dict[str, Any]:
-        schema = self.analyze_schema(refresh=True)
+        schema = self.analyze_schema(refresh=False)
         hipaa_manager.log_audit_event('snowflake_agent_query', {
             'query_hash': hipaa_manager.hash_phi(question),
             'database': schema['database'],
