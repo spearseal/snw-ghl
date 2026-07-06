@@ -332,12 +332,12 @@ export default function Home() {
     <div className="mx-auto max-w-5xl">
       <div className="mb-6">
         <div className="mb-1 flex items-center gap-2 text-fuchsia-400">
-          <span className="text-lg">👖</span>
-          <span className="text-xs font-medium uppercase tracking-wider">Denim-powered AI</span>
+          <span className="text-lg">✨</span>
+          <span className="text-xs font-medium uppercase tracking-wider">Spagent-powered AI</span>
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Jeans AI</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Spagent AI</h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Your stretch-fit data assistant — queries Snowflake &amp; GHL without ripping at the seams.
+          Your intelligent data assistant — queries Snowflake &amp; GHL in plain English.
           Smart mode goes live; Memory Search digs through pre-loaded chunks.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -350,7 +350,7 @@ export default function Home() {
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
             }`}
           >
-            Smart Jeans
+            Smart Spagent
           </button>
           <button
             type="button"
@@ -470,7 +470,7 @@ export default function Home() {
               onChange={(e) => setQuestion(e.target.value)}
               placeholder={
                 queryMode === 'smart'
-                  ? 'e.g. Jeans, how many patients slipped through the cracks?'
+                  ? 'e.g. Spagent, how many patients slipped through the cracks?'
                   : 'e.g. Which contacts have open opportunities?'
               }
               className="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 py-3 pl-11 pr-4 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 outline-none transition focus:border-indigo-500"
@@ -751,7 +751,7 @@ export default function Home() {
         {!response && !agentResponse && !smartResponse && !error && (
           <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
             {queryMode === 'smart'
-              ? 'Connect your sources, hit Refresh Memory, then ask Jeans anything — it fits every datasource.'
+              ? 'Connect your sources, hit Refresh Memory, then ask Spagent anything — it fits every datasource.'
               : 'Connect sources, refresh memory, then search indexed chunks.'}
           </div>
         )}

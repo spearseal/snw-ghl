@@ -62,10 +62,10 @@ export const APP_NAV: NavItem[] = [
   },
   {
     href: '/query',
-    label: 'Jeans AI',
+    label: 'Spagent AI',
     icon: Sparkles,
     description: 'Natural language queries across data sources',
-    keywords: ['query', 'ai', 'jeans', 'search', 'sql'],
+    keywords: ['query', 'ai', 'spagent', 'search', 'sql'],
   },
 ];
 
