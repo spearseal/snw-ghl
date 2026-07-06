@@ -8,6 +8,7 @@ import { clearSession, getEmail } from '@/lib/api';
 import { APP_NAV } from '@/lib/navigation';
 import { isActiveNavPath } from '@/lib/routes';
 import { cn } from '@/lib/cn';
+import { getEmailInitials } from '@/lib/user';
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -86,9 +87,15 @@ export default function Sidebar({ mobileOpen, onMobileClose, onSearchClick }: Si
       <div className="border-t border-slate-200 p-4 dark:border-slate-800">
         <ThemeToggle className="mb-2 w-full justify-start" />
         {email && (
-          <p className="mb-2 truncate text-xs text-slate-500" title={email}>
-            {email}
-          </p>
+          <div
+            className="mb-3 flex items-center gap-2"
+            title={email}
+            aria-label={`Signed in as ${email}`}
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold tracking-wide text-white">
+              {getEmailInitials(email)}
+            </span>
+          </div>
         )}
         <button
           type="button"

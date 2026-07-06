@@ -3,6 +3,7 @@ import {
   BarChart3,
   ClipboardList,
   DollarSign,
+  FileText,
   HeartPulse,
   Sparkles,
   UserCheck,
@@ -44,6 +45,13 @@ export const APP_NAV: NavItem[] = [
     icon: DollarSign,
     description: 'Monthly revenue factors and pipeline decisions',
     keywords: ['revenue', 'growth', 'pipeline', 'monthly'],
+  },
+  {
+    href: '/reports',
+    label: 'Reports',
+    icon: FileText,
+    description: 'Executive, revenue, retention, compliance, and CEO reports',
+    keywords: ['reports', 'export', 'analytics', 'summary', 'print'],
   },
   {
     href: '/',

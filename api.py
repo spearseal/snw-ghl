@@ -43,6 +43,7 @@ from medspa_insights import compute_ceo_tasks, evaluate_compliance
 from intake_store import HealthIntakeForm, save_intake
 from treatment_insights import compute_plan_for_intake, compute_treatment_plans
 from revenue_insights import compute_revenue_growth
+from reports import compute_reports, report_to_csv_rows
 from search_service import search_datasets
 from reactivate_campaign import (
     ReactivateSendRequest,
@@ -804,6 +805,37 @@ def get_revenue_growth(
     )
     result['errors'] = errors or None
     result['skipped'] = skipped or None
+    return result
+
+
+@app.get('/api/reports')
+def get_reports(
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+    inactive_days: int = 90,
+    user: str = Depends(get_current_user),
+):
+    """Aggregated business reports across insights, revenue, retention, and compliance."""
+    _seed_defaults()
+    connected = get_connected_sources()
+    if not connected['ghl'] and not connected['snowflake']:
+        return compute_reports({}, connected, inactive_days=inactive_days)
+
+    datasets, errors, skipped = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        snowflake_passcode=snowflake_passcode,
+        limit_per_entity=limit_per_entity,
+    )
+    email_cfg = load_email_settings()
+    threshold = email_cfg.get('inactive_days') or inactive_days
+    result = compute_reports(datasets, connected, inactive_days=threshold)
+    result['errors'] = errors or None
+    result['skipped'] = skipped or None
+    hipaa_manager.log_audit_event('reports_generated', {
+        'report_count': len(result.get('reports') or []),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+    })
     return result
 
 
