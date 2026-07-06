@@ -5,6 +5,7 @@
 @layer base {
   html {
     @apply antialiased;
+    scroll-behavior: smooth;
   }
 
   body {
@@ -13,5 +14,71 @@
 
   html.dark body {
     @apply bg-slate-950 text-slate-100;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-indigo-500;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded-lg focus:bg-indigo-600 focus:px-4 focus:py-2 focus:text-white;
+  }
+}
+
+@media print {
+  aside,
+  nav[aria-label='Pagination'],
+  .print\\:hidden,
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+  }
+
+  h1[data-print-title]::before {
+    content: attr(data-print-title);
+    display: block;
+    font-size: 18pt;
+    font-weight: 700;
+    margin-bottom: 12pt;
+  }
+
+  h1[data-print-title] {
+    font-size: 0;
+  }
+
+  a[href]::after {
+    content: none;
+  }
+
+  .rounded-2xl,
+  .rounded-xl {
+    border: 1px solid #ccc !important;
+    break-inside: avoid;
   }
 }

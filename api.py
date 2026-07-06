@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -39,6 +40,20 @@ from email_followup import (
 )
 from insights import compute_insights
 from medspa_insights import compute_ceo_tasks, evaluate_compliance
+from intake_store import HealthIntakeForm, save_intake
+from treatment_insights import compute_plan_for_intake, compute_treatment_plans
+from revenue_insights import compute_revenue_growth
+from search_service import search_datasets
+from reactivate_campaign import (
+    ReactivateSendRequest,
+    ReactivateSettings,
+    compute_reactivate_campaign,
+    export_all_followup_csv,
+    export_manual_followup_csv,
+    load_reactivate_settings,
+    save_reactivate_settings,
+    send_reactivate_emails,
+)
 from hipaa_compliance import hipaa_manager
 from query_engine import QueryEngine, detect_query_sources
 from snowflake_agent import SnowflakeAgent
@@ -703,6 +718,273 @@ def get_insights(
     result['errors'] = errors or None
     result['skipped'] = skipped or None
     return result
+
+
+@app.get('/api/treatment-plans')
+def get_treatment_plans(
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+    inactive_days: int = 90,
+    limit: int = 50,
+    user: str = Depends(get_current_user),
+):
+    """Patient treatment plans from Snowflake data and health intake forms."""
+    _seed_defaults()
+    connected = get_connected_sources()
+
+    datasets, errors, skipped = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        snowflake_passcode=snowflake_passcode,
+        limit_per_entity=limit_per_entity,
+    )
+    result = compute_treatment_plans(
+        datasets, connected, inactive_days=inactive_days, limit=limit,
+    )
+    result['errors'] = errors or None
+    result['skipped'] = skipped or None
+    return result
+
+
+@app.post('/api/intake/submit')
+def submit_health_intake(
+    form: HealthIntakeForm,
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+    user: str = Depends(get_current_user),
+):
+    """Submit a health intake form and return a generated treatment plan."""
+    _seed_defaults()
+    try:
+        intake = save_intake(form)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    connected = get_connected_sources()
+    datasets, errors, skipped = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        snowflake_passcode=snowflake_passcode,
+        limit_per_entity=limit_per_entity,
+    )
+    plan = compute_plan_for_intake(intake, datasets)
+    return {
+        'intake_id': intake['id'],
+        'submitted_at': intake['submitted_at'],
+        'plan': plan,
+        'errors': errors or None,
+        'skipped': skipped or None,
+    }
+
+
+@app.get('/api/revenue/growth')
+def get_revenue_growth(
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+    inactive_days: int = 90,
+    months: int = 12,
+    user: str = Depends(get_current_user),
+):
+    """Monthly revenue metrics and decision factors from connected data."""
+    _seed_defaults()
+    connected = get_connected_sources()
+    if not connected['ghl'] and not connected['snowflake']:
+        return compute_revenue_growth({}, connected, months=months, inactive_days=inactive_days)
+
+    datasets, errors, skipped = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        snowflake_passcode=snowflake_passcode,
+        limit_per_entity=limit_per_entity,
+    )
+    email_cfg = load_email_settings()
+    threshold = email_cfg.get('inactive_days') or inactive_days
+    result = compute_revenue_growth(
+        datasets, connected, months=min(max(months, 3), 24), inactive_days=threshold,
+    )
+    result['errors'] = errors or None
+    result['skipped'] = skipped or None
+    return result
+
+
+@app.get('/api/search')
+def global_search(
+    q: str = '',
+    limit: int = 20,
+    offset: int = 0,
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+    user: str = Depends(get_current_user),
+):
+    """Global search across contacts and opportunities."""
+    _seed_defaults()
+    connected = get_connected_sources()
+    if not q.strip():
+        return {'results': [], 'total': 0, 'limit': limit, 'offset': offset, 'query': ''}
+    if not connected['ghl'] and not connected['snowflake']:
+        return {'results': [], 'total': 0, 'limit': limit, 'offset': offset, 'query': q}
+
+    datasets, errors, _ = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        snowflake_passcode=snowflake_passcode,
+        limit_per_entity=limit_per_entity,
+    )
+    result = search_datasets(
+        datasets, q, limit=min(max(1, limit), 50), offset=max(0, offset),
+    )
+    result['errors'] = errors or None
+    return result
+
+
+@app.get('/api/reactivate/campaign')
+def get_reactivate_campaign(
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+    inactive_days: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 25,
+    q: str = '',
+    channel: str = 'all',
+    sort: str = '-days_inactive',
+    user: str = Depends(get_current_user),
+):
+    """Identify 90+ day no-show patients for reactivate campaign with discount offers."""
+    _seed_defaults()
+    connected = get_connected_sources()
+    if not connected['ghl'] and not connected['snowflake']:
+        settings = load_reactivate_settings()
+        return {
+            'connected_sources': connected,
+            'settings': settings,
+            'summary': {'total_candidates': 0, 'email_ready': 0, 'manual_followup': 0},
+            'candidates': {'email_ready': [], 'manual_only': [], 'total': 0},
+            'message': 'Connect GoHighLevel and/or Snowflake in DB Connectors first.',
+        }
+
+    datasets, errors, skipped = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        snowflake_passcode=snowflake_passcode,
+        limit_per_entity=limit_per_entity,
+    )
+    cfg = load_reactivate_settings()
+    threshold = inactive_days if inactive_days is not None else cfg.get('inactive_days', 90)
+    result = compute_reactivate_campaign(
+        datasets,
+        connected,
+        inactive_days=threshold,
+        mask_phi=True,
+        page=max(1, page),
+        page_size=min(max(5, page_size), 100),
+        q=q,
+        channel=channel if channel in ('all', 'email', 'manual') else 'all',
+        sort=sort,
+    )
+    result['errors'] = errors or None
+    result['skipped'] = skipped or None
+    return result
+
+
+@app.put('/api/reactivate/settings')
+def update_reactivate_settings(
+    settings_in: ReactivateSettings,
+    user: str = Depends(get_current_user),
+):
+    return save_reactivate_settings(settings_in.model_dump())
+
+
+@app.post('/api/reactivate/send')
+def send_reactivate_campaign(
+    req: ReactivateSendRequest,
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+    user: str = Depends(get_current_user),
+):
+    """Send discount reactivation emails to selected or all email-ready candidates."""
+    _seed_defaults()
+    connected = get_connected_sources()
+    datasets, errors, _ = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        snowflake_passcode=snowflake_passcode,
+        limit_per_entity=limit_per_entity,
+    )
+    cfg = load_reactivate_settings()
+    campaign = compute_reactivate_campaign(
+        datasets, connected, inactive_days=cfg.get('inactive_days', 90), mask_phi=False,
+    )
+    raw = campaign.get('candidates') or {}
+    # Use unmasked source list for sending
+    insights_raw = compute_insights(
+        datasets, connected,
+        inactive_days=cfg.get('inactive_days', 90),
+        mask_contacts=False,
+    )
+    candidates = insights_raw.get('followup_candidates') or []
+
+    ghl_client = None
+    provider = (cfg.get('provider') or 'ghl').lower()
+    if provider == 'ghl' and connected['ghl']:
+        ghl_client = GHLClient(get_active_config('ghl'))
+
+    try:
+        result = send_reactivate_emails(
+            candidates,
+            contact_ids=req.contact_ids,
+            send_all=req.send_all,
+            dry_run=req.dry_run,
+            ghl_client=ghl_client,
+        )
+        result['email_ready'] = len(raw.get('email_ready') or [])
+        result['errors'] = errors or None
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.get('/api/reactivate/export')
+def export_reactivate_list(
+    snowflake_passcode: Optional[str] = None,
+    limit_per_entity: int = 500,
+    scope: str = 'manual',
+    user: str = Depends(get_current_user),
+):
+    """Export manual follow-up list (or full list) as CSV for staff outreach."""
+    _seed_defaults()
+    connected = get_connected_sources()
+    datasets, _, _ = _fetch_datasets(
+        include_ghl=connected['ghl'],
+        include_snowflake=connected['snowflake'],
+        snowflake_passcode=snowflake_passcode,
+        limit_per_entity=limit_per_entity,
+    )
+    cfg = load_reactivate_settings()
+    insights_raw = compute_insights(
+        datasets, connected,
+        inactive_days=cfg.get('inactive_days', 90),
+        mask_contacts=False,
+    )
+    candidates = insights_raw.get('followup_candidates') or []
+
+    if scope == 'all':
+        csv_data = export_all_followup_csv(candidates, cfg)
+        filename = 'reactivate-campaign-all.csv'
+    else:
+        csv_data = export_manual_followup_csv(candidates, cfg)
+        filename = 'reactivate-manual-followup.csv'
+
+    hipaa_manager.log_audit_event('reactivate_export', {
+        'scope': scope,
+        'count': len(candidates),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
+    })
+
+    return PlainTextResponse(
+        content=csv_data,
+        media_type='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get('/api/compliance/evaluate')

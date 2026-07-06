@@ -6,3 +6,7 @@ export function normalizePath(pathname: string): string {
 export function isLoginPath(pathname: string): boolean {
   return normalizePath(pathname) === '/login';
 }
+
+export function isActiveNavPath(pathname: string, href: string): boolean {
+  return normalizePath(pathname) === normalizePath(href);
+}

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import AppShell from '@/components/layout/AppShell';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import AppProviders from '@/components/providers/AppProviders';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -34,13 +35,15 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
-          <Suspense
-            fallback={
-              <div className="min-h-screen bg-slate-50 dark:bg-slate-950" />
-            }
-          >
-            <AppShell>{children}</AppShell>
-          </Suspense>
+          <AppProviders>
+            <Suspense
+              fallback={
+                <div className="min-h-screen bg-slate-50 dark:bg-slate-950" />
+              }
+            >
+              <AppShell>{children}</AppShell>
+            </Suspense>
+          </AppProviders>
         </ThemeProvider>
       </body>
     </html>
