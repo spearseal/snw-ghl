@@ -87,24 +87,17 @@ export default function Sidebar({ mobileOpen, onMobileClose, onSearchClick }: Si
       <div className="border-t border-slate-200 p-4 dark:border-slate-800">
         <ThemeToggle className="mb-2 w-full justify-start" />
         {email && (
-          <div
-            className="mb-3 flex items-center gap-2"
-            title={email}
-            aria-label={`Signed in as ${email}`}
+          <button
+            type="button"
+            onClick={logout}
+            title={`${email} — Log out`}
+            aria-label={`Log out (${email})`}
+            className="group relative flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold tracking-wide text-white transition hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold tracking-wide text-white">
-              {getEmailInitials(email)}
-            </span>
-          </div>
+            <span className="transition group-hover:opacity-0">{getEmailInitials(email)}</span>
+            <LogOut className="absolute h-4 w-4 opacity-0 transition group-hover:opacity-100" aria-hidden />
+          </button>
         )}
-        <button
-          type="button"
-          onClick={logout}
-          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-200"
-        >
-          <LogOut className="h-4 w-4" aria-hidden />
-          Log out
-        </button>
       </div>
     </>
   );
