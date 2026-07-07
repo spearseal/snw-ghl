@@ -21,4 +21,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 COPY --from=frontend /build/out ./frontend/out
 
-CMD ["sh", "-c", "uvicorn api:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Cloud Run injects PORT; default for local runs
+ENV PORT=8000
+ENV PYTHONUNBUFFERED=1
+ENV DATA_DIR=/app/data
+
+RUN mkdir -p /app/data/semantic_layer /app/logs
+
+EXPOSE 8000
+
+CMD exec uvicorn api:app --host 0.0.0.0 --port ${PORT:-8000} --log-level info

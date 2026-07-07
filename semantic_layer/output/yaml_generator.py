@@ -3,13 +3,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-import yaml
-
 from semantic_layer.models import SemanticModel
 
 
 def generate_yaml(model: SemanticModel) -> str:
     """Generate governed YAML semantic definitions."""
+    import yaml
     doc: Dict[str, Any] = {
         'model': {
             'name': model.name,

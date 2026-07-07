@@ -1,6 +1,7 @@
 """FastAPI router for semantic layer endpoints."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -11,14 +12,11 @@ from pydantic import BaseModel, Field
 from auth import get_current_user
 from semantic_layer.config import (
     SEMANTIC_OUTPUT_DIR,
-    SemanticLayerConfig,
     load_semantic_config,
     save_semantic_config,
 )
-from semantic_layer.connectors.registry import list_supported_sources
 from semantic_layer.context import build_semantic_summary
 from semantic_layer.models import SourceMetadata
-from semantic_layer.pipeline import SemanticLayerPipeline, run_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +37,8 @@ class ConfigUpdateRequest(BaseModel):
 @router.get('/sources')
 def get_supported_sources(user: str = Depends(get_current_user)) -> Dict[str, Any]:
     """List supported connector types."""
-    return {'sources': list_supported_sources()}
+    from semantic_layer.connectors.registry import list_supported_sources as _list
+    return {'sources': _list()}
 
 
 @router.get('/config')
@@ -79,6 +78,9 @@ def discover_metadata(
     user: str = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Discover metadata from all configured sources without full profiling."""
+    from semantic_layer.discovery.metadata import discover_all_sources
+    from semantic_layer.pipeline import SemanticLayerPipeline
+
     cfg = load_semantic_config()
     pipeline = SemanticLayerPipeline(cfg)
     sources = discover_all_sources(
@@ -98,6 +100,8 @@ def build_semantic_layer(
     user: str = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Run the full semantic layer pipeline."""
+    from semantic_layer.pipeline import run_pipeline
+
     try:
         result = run_pipeline(profile=req.profile, passcode=req.snowflake_passcode)
     except Exception as exc:
@@ -132,7 +136,6 @@ def get_yaml_model(user: str = Depends(get_current_user)) -> Dict[str, str]:
 @router.get('/model/json')
 def get_json_model(user: str = Depends(get_current_user)) -> Dict[str, Any]:
     """Return generated JSON metadata."""
-    import json
     cfg = load_semantic_config()
     path = os.path.join(SEMANTIC_OUTPUT_DIR, f'{cfg.model_name}.json')
     if not os.path.exists(path):

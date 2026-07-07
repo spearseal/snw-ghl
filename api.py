@@ -30,7 +30,6 @@ from connections import (
     _seed_defaults,
 )
 from connections import router as connections_router
-from semantic_layer.router import router as semantic_router
 from ghl_client import GHLClient
 from email_followup import (
     EmailSettings,
@@ -73,6 +72,30 @@ app = FastAPI(
     version='1.0.0',
 )
 
+DATA_DIR = os.environ.get(
+    'DATA_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+)
+
+
+@app.on_event('startup')
+async def startup_event():
+    """Ensure writable directories exist on Cloud Run."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(os.path.join(DATA_DIR, 'semantic_layer'), exist_ok=True)
+    log_dir = os.path.dirname(settings.audit_log_path)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+    logger.info('App startup complete — data dir: %s', DATA_DIR)
+
+
+def _register_semantic_router() -> None:
+    try:
+        from semantic_layer.router import router as semantic_router
+        app.include_router(semantic_router)
+        logger.info('Semantic layer API registered')
+    except Exception as exc:
+        logger.error('Semantic layer unavailable (app will run without it): %s', exc)
+
 
 # Determine allowed CORS origin from environment.
 # GCP deployments set FRONTEND_ORIGIN; fall back to localhost for dev.
@@ -88,7 +111,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(connections_router)
-app.include_router(semantic_router)
+_register_semantic_router()
 
 engine = QueryEngine()
 
