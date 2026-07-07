@@ -273,6 +273,14 @@ def _llm_sql(question: str, schema: Dict[str, Any], limit: int) -> Optional[Tupl
     user = f"Schema:\n{_schema_text(schema)}\n\nQuestion: {question}"
 
     try:
+        from semantic_layer.context import semantic_context_for_llm
+        semantic_ctx = semantic_context_for_llm()
+        if semantic_ctx:
+            user = f"{semantic_ctx}\n\nSchema:\n{_schema_text(schema)}\n\nQuestion: {question}"
+    except Exception:
+        pass
+
+    try:
         resp = requests.post(
             base_url,
             headers={

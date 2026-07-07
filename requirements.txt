@@ -40,3 +40,12 @@ chonkie==0.4.1
 
 # Authentication
 PyJWT==2.8.0
+
+# Semantic layer
+PyYAML==6.0.1
+
+# Optional database connectors for semantic layer
+# psycopg2-binary  # PostgreSQL
+# pymysql          # MySQL
+# google-cloud-bigquery  # BigQuery
+# pyodbc           # SQL Server

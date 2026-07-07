@@ -30,6 +30,7 @@ from connections import (
     _seed_defaults,
 )
 from connections import router as connections_router
+from semantic_layer.router import router as semantic_router
 from ghl_client import GHLClient
 from email_followup import (
     EmailSettings,
@@ -87,6 +88,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(connections_router)
+app.include_router(semantic_router)
 
 engine = QueryEngine()
 
@@ -336,6 +338,12 @@ def smart_query(req: SmartQueryRequest, user: str = Depends(get_current_user)):
         'timestamp': datetime.utcnow().isoformat(),
     })
 
+    try:
+        from semantic_layer.context import semantic_model_exists
+        semantic_active = semantic_model_exists()
+    except Exception:
+        semantic_active = False
+
     return {
         'answer': answer,
         'connected_sources': connected,
@@ -346,6 +354,7 @@ def smart_query(req: SmartQueryRequest, user: str = Depends(get_current_user)):
         'load_skipped': load_skipped or None,
         'used_cached_index': used_cached_index,
         'total_chunks': len(engine.chunks),
+        'semantic_model_active': semantic_active,
     }
 
 

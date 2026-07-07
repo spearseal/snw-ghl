@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, RefreshCw, Search } from 'lucide-react';
+import SemanticLayerPanel from '@/components/semantic/SemanticLayerPanel';
 import { apiFetch, getToken } from '@/lib/api';
 
 interface QueryResult {
@@ -48,6 +49,7 @@ interface SmartQueryResponse {
   load_errors?: Record<string, string>;
   load_skipped?: Record<string, string>;
   total_chunks?: number;
+  semantic_model_active?: boolean;
   results_by_source: {
     snowflake?: AgentResponse;
     ghl?: QueryResponse & { datasource?: string };
@@ -338,7 +340,7 @@ export default function Home() {
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Spagent AI</h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Your intelligent data assistant — queries Snowflake &amp; GHL in plain English.
-          Smart mode goes live; Memory Search digs through pre-loaded chunks.
+          Build the semantic layer below so Spagent understands your business entities and metrics.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
@@ -369,11 +371,20 @@ export default function Home() {
               onClick={loadSchema}
               className="rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
             >
-              Analyze Schema
+              Raw Schema
             </button>
           )}
         </div>
       </div>
+
+      <SemanticLayerPanel
+        snowflakeConnected={snowflakeConnected}
+        ghlConnected={ghlConnected}
+        snowflakeNeedsMfa={snowflakeNeedsMfa}
+        snowflakePasscode={snowflakePasscode}
+        onSuggestedQuestion={setQuestion}
+        onError={setError}
+      />
 
       {/* Connected sources + memory status */}
       <div className="mb-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/60 px-4 py-3">
@@ -532,6 +543,11 @@ export default function Home() {
           <div className="space-y-4">
             <div className="rounded-xl border border-indigo-800/50 bg-indigo-950/30 px-4 py-3">
               <p className="text-sm font-medium text-indigo-200">{smartResponse.answer}</p>
+              {smartResponse.semantic_model_active && (
+                <p className="mt-1 text-xs text-indigo-300/80">
+                  Semantic layer active — SQL generated with business entities and measures
+                </p>
+              )}
               {smartResponse.sources_queried && smartResponse.sources_queried.length > 0 && (
                 <p className="mt-1 text-xs text-indigo-300/70">
                   Queried: {smartResponse.sources_queried.join(', ')}
@@ -751,7 +767,7 @@ export default function Home() {
         {!response && !agentResponse && !smartResponse && !error && (
           <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-500">
             {queryMode === 'smart'
-              ? 'Connect your sources, hit Refresh Memory, then ask Spagent anything — it fits every datasource.'
+              ? 'Connect your sources, build the semantic model, then ask Spagent anything — it uses business entities and metrics for smarter SQL.'
               : 'Connect sources, refresh memory, then search indexed chunks.'}
           </div>
         )}
