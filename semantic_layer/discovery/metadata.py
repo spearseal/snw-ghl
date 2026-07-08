@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from semantic_layer.config import SourceConnectorConfig
 from semantic_layer.connectors.registry import create_connector
@@ -38,9 +38,14 @@ def discover_all_sources(
     sources: List[SourceConnectorConfig],
     max_tables: int = 200,
     passcode: Optional[str] = None,
-) -> List[SourceMetadata]:
-    """Discover metadata from all enabled sources."""
+) -> Tuple[List[SourceMetadata], Dict[str, str]]:
+    """Discover metadata from all enabled sources. Returns (results, errors_by_source)."""
     results: List[SourceMetadata] = []
+    errors: Dict[str, str] = {}
+
+    if not sources:
+        return results, {'config': 'No sources in semantic layer configuration'}
+
     for src in sources:
         if not src.enabled:
             logger.info('Skipping disabled source: %s', src.name)
@@ -49,5 +54,18 @@ def discover_all_sources(
             meta = discover_source_metadata(src, max_tables=max_tables, passcode=passcode)
             results.append(meta)
         except Exception as exc:
+            msg = str(exc)
             logger.error('Discovery failed for %s: %s', src.name, exc)
+            errors[src.name] = msg
+
+    return results, errors
+
+
+def discover_all_sources_list(
+    sources: List[SourceConnectorConfig],
+    max_tables: int = 200,
+    passcode: Optional[str] = None,
+) -> List[SourceMetadata]:
+    """Backwards-compatible wrapper returning only metadata list."""
+    results, _ = discover_all_sources(sources, max_tables=max_tables, passcode=passcode)
     return results

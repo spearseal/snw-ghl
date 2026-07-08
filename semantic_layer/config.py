@@ -97,32 +97,46 @@ def save_semantic_config(config: SemanticLayerConfig) -> None:
         json.dump(config.model_dump(), f, indent=2)
 
 
-def merge_active_connection_configs(config: SemanticLayerConfig) -> SemanticLayerConfig:
-    """Augment config with active connections from connections.json."""
+def resolve_semantic_config() -> SemanticLayerConfig:
+    """Load config and resolve sources from DB connectors + env (Cloud Run safe)."""
     try:
-        from connections import get_active_config
+        from connections import _seed_defaults, get_active_config
+        _seed_defaults()
     except ImportError:
-        return config
+        get_active_config = None  # type: ignore
 
-    active_sources: List[SourceConnectorConfig] = []
-    for src in config.sources:
-        active_sources.append(src)
+    cfg = load_semantic_config()
+    resolved: List[SourceConnectorConfig] = []
 
-    sf = get_active_config('snowflake')
-    if sf and not any(s.type == SourceType.SNOWFLAKE for s in active_sources):
-        active_sources.append(SourceConnectorConfig(
-            name='snowflake_active',
-            type=SourceType.SNOWFLAKE,
-            config=sf,
-        ))
+    if get_active_config:
+        sf = get_active_config('snowflake')
+        if sf:
+            resolved.append(SourceConnectorConfig(
+                name='snowflake_active',
+                type=SourceType.SNOWFLAKE,
+                config={k: str(v) for k, v in sf.items() if v is not None},
+            ))
 
-    ghl = get_active_config('ghl')
-    if ghl and not any(s.type == SourceType.GHL for s in active_sources):
-        active_sources.append(SourceConnectorConfig(
-            name='ghl_active',
-            type=SourceType.GHL,
-            config=ghl,
-        ))
+        ghl = get_active_config('ghl')
+        if ghl:
+            resolved.append(SourceConnectorConfig(
+                name='ghl_active',
+                type=SourceType.GHL,
+                config={k: str(v) for k, v in ghl.items() if v is not None},
+            ))
 
-    config.sources = active_sources
-    return config
+    # Keep any non-Snowflake/GHL custom sources from saved config
+    for src in cfg.sources:
+        if src.type not in {SourceType.SNOWFLAKE, SourceType.GHL}:
+            resolved.append(src)
+
+    if not resolved:
+        resolved = default_sources_from_env()
+
+    cfg.sources = resolved
+    return cfg
+
+
+def merge_active_connection_configs(config: SemanticLayerConfig) -> SemanticLayerConfig:
+    """Deprecated alias — use resolve_semantic_config()."""
+    return resolve_semantic_config()

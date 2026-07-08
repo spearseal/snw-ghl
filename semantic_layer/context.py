@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from semantic_layer.config import SEMANTIC_OUTPUT_DIR, load_semantic_config
+from semantic_layer.config import SEMANTIC_OUTPUT_DIR, load_semantic_config, resolve_semantic_config
 
 logger = logging.getLogger(__name__)
 
@@ -82,14 +82,23 @@ def semantic_context_for_llm(max_entities: int = 15, max_measures: int = 10) -> 
 
 def build_semantic_summary() -> Dict[str, Any]:
     """Lightweight summary for the Spagent AI UI."""
-    cfg = load_semantic_config()
+    try:
+        cfg = resolve_semantic_config()
+    except Exception:
+        cfg = load_semantic_config()
+
     data = load_semantic_json()
+    configured = [
+        {'name': s.name, 'type': s.type.value}
+        for s in cfg.sources
+    ]
 
     if not data:
         return {
             'built': False,
             'model_name': cfg.model_name,
             'model_description': cfg.model_description,
+            'configured_sources': configured,
             'entities': 0,
             'dimensions': 0,
             'facts': 0,
@@ -129,6 +138,7 @@ def build_semantic_summary() -> Dict[str, Any]:
         'built': True,
         'model_name': source_info.get('model_name') or cfg.model_name,
         'model_description': cfg.model_description,
+        'configured_sources': configured,
         'entities': len(entities),
         'dimensions': len(data.get('dimensions') or []),
         'facts': len(data.get('facts') or []),

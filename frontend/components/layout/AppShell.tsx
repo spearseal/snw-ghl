@@ -85,7 +85,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <main
           id="main-content"
-          className="min-h-screen px-4 pb-20 pt-4 sm:px-6 sm:pt-6 lg:pb-16"
+          className="min-h-screen px-4 pb-20 pt-4 sm:px-6 lg:pb-16 lg:pt-0"
         >
           {children}
         </main>

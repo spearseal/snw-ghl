@@ -10,7 +10,7 @@ import logging
 import os
 from typing import List, Optional
 
-from semantic_layer.config import SemanticLayerConfig, load_semantic_config, merge_active_connection_configs
+from semantic_layer.config import SemanticLayerConfig, load_semantic_config, resolve_semantic_config
 from semantic_layer.connectors.registry import create_connector
 from semantic_layer.discovery.metadata import discover_all_sources
 from semantic_layer.models import PipelineResult, SourceMetadata, TableProfile
@@ -27,8 +27,7 @@ class SemanticLayerPipeline:
     """Production semantic layer build pipeline."""
 
     def __init__(self, config: Optional[SemanticLayerConfig] = None):
-        self.config = config or load_semantic_config()
-        self.config = merge_active_connection_configs(self.config)
+        self.config = config or resolve_semantic_config()
 
     def run(
         self,
@@ -38,14 +37,27 @@ class SemanticLayerPipeline:
         """Execute the full semantic layer pipeline."""
         logger.info('Starting semantic layer pipeline: %s', self.config.model_name)
 
+        if not self.config.sources:
+            raise RuntimeError(
+                'No data sources configured. Connect Snowflake or GoHighLevel '
+                'in DB Connectors and test the connection first.'
+            )
+
         # 1. Discover metadata
-        sources = discover_all_sources(
+        sources, discovery_errors = discover_all_sources(
             self.config.sources,
             max_tables=self.config.max_tables_per_source,
             passcode=passcode,
         )
         if not sources:
-            raise RuntimeError('No sources discovered. Configure at least one data source.')
+            if discovery_errors:
+                detail = '; '.join(f'{k}: {v}' for k, v in discovery_errors.items())
+                raise RuntimeError(
+                    f'Could not discover any sources. {detail}'
+                )
+            raise RuntimeError(
+                'No sources discovered. Connect and test Snowflake or GoHighLevel in DB Connectors.'
+            )
 
         # 2. Profile tables
         profiles: List[TableProfile] = []

@@ -78,18 +78,20 @@ def discover_metadata(
     user: str = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Discover metadata from all configured sources without full profiling."""
+    from semantic_layer.config import resolve_semantic_config
     from semantic_layer.discovery.metadata import discover_all_sources
     from semantic_layer.pipeline import SemanticLayerPipeline
 
-    cfg = load_semantic_config()
-    pipeline = SemanticLayerPipeline(cfg)
-    sources = discover_all_sources(
+    pipeline = SemanticLayerPipeline(resolve_semantic_config())
+    sources, errors = discover_all_sources(
         pipeline.config.sources,
         max_tables=pipeline.config.max_tables_per_source,
         passcode=req.snowflake_passcode,
     )
     return {
         'source_count': len(sources),
+        'configured_sources': [s.name for s in pipeline.config.sources],
+        'errors': errors or None,
         'sources': [_source_summary(s) for s in sources],
     }
 

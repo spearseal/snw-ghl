@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Database, LogOut, Search, ShieldCheck, Snowflake, X } from 'lucide-react';
-import ThemeToggle from '@/components/ThemeToggle';
 import { clearSession, getEmail } from '@/lib/api';
 import { APP_NAV } from '@/lib/navigation';
 import { isActiveNavPath } from '@/lib/routes';
@@ -85,7 +84,6 @@ export default function Sidebar({ mobileOpen, onMobileClose, onSearchClick }: Si
       </nav>
 
       <div className="border-t border-slate-200 p-4 dark:border-slate-800">
-        <ThemeToggle className="mb-2 w-full justify-start" />
         {email && (
           <button
             type="button"

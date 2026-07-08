@@ -8,6 +8,7 @@ export interface SemanticSummary {
   built: boolean;
   model_name: string;
   model_description: string;
+  configured_sources?: Array<{ name: string; type: string }>;
   entities: number;
   dimensions: number;
   facts: number;
@@ -70,6 +71,10 @@ export default function SemanticLayerPanel({
   }, [fetchSummary]);
 
   const buildModel = async () => {
+    if (!snowflakeConnected && !ghlConnected) {
+      onError('Connect Snowflake or GoHighLevel in DB Connectors and test the connection first.');
+      return;
+    }
     if (snowflakeConnected && snowflakeNeedsMfa && !snowflakePasscode.trim()) {
       onError('Enter your Snowflake MFA code to build the semantic model.');
       return;
@@ -155,6 +160,15 @@ export default function SemanticLayerPanel({
               ? 'Spagent uses business entities, dimensions, and measures to generate smarter SQL.'
               : 'Build a semantic model to help Spagent understand your data sources.'}
           </p>
+          {summary?.configured_sources && summary.configured_sources.length > 0 ? (
+            <p className="text-xs text-slate-500">
+              Sources: {summary.configured_sources.map((s) => s.type).join(', ')}
+            </p>
+          ) : (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              No sources linked — connect Snowflake or GHL in DB Connectors first.
+            </p>
+          )}
         </div>
 
         <div className="flex shrink-0 flex-wrap gap-2">

@@ -3,6 +3,9 @@ export function normalizePath(pathname: string): string {
   return trimmed || '/';
 }
 
+/** Default landing page after sign-in */
+export const DEFAULT_APP_ROUTE = '/query';
+
 export function isLoginPath(pathname: string): boolean {
   return normalizePath(pathname) === '/login';
 }

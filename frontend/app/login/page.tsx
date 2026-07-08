@@ -1,10 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Database, Loader2, LogIn, ShieldCheck, Snowflake, UserPlus } from 'lucide-react';
 import ThemeToggle from '@/components/ThemeToggle';
-import { setSession } from '@/lib/api';
+import { getToken, setSession } from '@/lib/api';
+import { DEFAULT_APP_ROUTE } from '@/lib/routes';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,6 +14,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (getToken()) {
+      router.replace(DEFAULT_APP_ROUTE);
+    }
+  }, [router]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +52,7 @@ export default function LoginPage() {
         );
       }
       setSession(data.token as string, data.email as string);
-      router.push('/');
+      router.push(DEFAULT_APP_ROUTE);
     } catch (e) {
       setError(e instanceof Error ? e.message : `${mode} failed`);
     } finally {
