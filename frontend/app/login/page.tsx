@@ -93,46 +93,148 @@ export default function LoginPage() {
 
   return (
     <main className="relative min-h-screen bg-surface">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-32 top-0 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-success/10 blur-3xl" />
+      </div>
+
       <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
         <ThemeToggle showLabel={false} />
       </div>
 
-      <div className="grid min-h-screen lg:grid-cols-2">
-        <section className="relative hidden overflow-hidden border-r border-border bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 px-10 py-14 lg:flex lg:flex-col lg:justify-between">
-          <div className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
-          <div className="pointer-events-none absolute bottom-0 right-0 h-64 w-64 rounded-full bg-success/10 blur-3xl" />
-
-          <div className="relative">
-            <Badge variant="success" className="mb-6 border-emerald-500/40 bg-emerald-500/10 text-emerald-300">
-              <TrendingUp className="mr-1.5 inline h-3.5 w-3.5" />
-              Revenue engine
+      <div className="page-container relative z-10 mx-auto max-w-3xl py-12 sm:py-16 lg:py-20">
+        {/* Hero */}
+        <header className="mb-10 text-center">
+          <div className="mb-4 flex justify-center">
+            <Badge variant="success">
+              <TrendingUp className="mr-1.5 inline h-3.5 w-3.5" aria-hidden />
+              Revenue engine · Not another admin line item
             </Badge>
-            <h1 className="max-w-lg text-3xl font-semibold leading-tight tracking-tight text-white xl:text-4xl">
-              Turn your data into{' '}
-              <span className="bg-gradient-to-r from-emerald-300 to-indigo-300 bg-clip-text text-transparent">
-                measurable ROI
-              </span>
-              , not overhead.
-            </h1>
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-slate-300">
-              GHL + Snowflake intelligence built for med spas and clinics that want
-              upsell automation, subscription growth, and inventory discipline — with
-              HIPAA compliance included.
+          </div>
+          <div className="mb-3 flex items-center justify-center gap-2 text-primary">
+            <Sparkles className="h-5 w-5" aria-hidden />
+            <span className="text-caption font-medium uppercase tracking-wide">
+              Spagent Intelligence
+            </span>
+          </div>
+          <h1 className="text-page-title">
+            Turn your data into{' '}
+            <span className="text-primary">measurable ROI</span>, not overhead.
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-body">
+            GHL + Snowflake intelligence built for med spas and clinics — upsell
+            automation, subscription growth, and inventory discipline with HIPAA
+            compliance included.
+          </p>
+        </header>
+
+        {/* Sign in */}
+        <Card padding="md" className="mx-auto max-w-md shadow-card">
+          <div className="mb-6 text-center">
+            <h2 className="text-section-title text-lg">
+              {mode === 'login' ? 'Welcome back' : 'Start growing revenue'}
+            </h2>
+            <p className="mt-1 text-body">
+              {mode === 'login'
+                ? 'Sign in to access upsell insights, campaigns, and AI queries.'
+                : 'Create your account and connect your data sources.'}
             </p>
           </div>
 
-          <ul className="relative mt-10 space-y-3">
+          <form onSubmit={submit} className="space-y-4">
+            <Input
+              label="Work email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@clinic.com"
+              autoComplete="email"
+            />
+            <Input
+              label="Password"
+              type="password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              helperText="Minimum 8 characters"
+            />
+
+            {error && (
+              <AlertBanner variant="error" className="mb-0">
+                {error}
+              </AlertBanner>
+            )}
+
+            <Button
+              type="submit"
+              loading={loading}
+              className="w-full"
+              size="lg"
+              leftIcon={
+                !loading ? (
+                  mode === 'login' ? (
+                    <LogIn className="h-5 w-5" aria-hidden />
+                  ) : (
+                    <UserPlus className="h-5 w-5" aria-hidden />
+                  )
+                ) : undefined
+              }
+            >
+              {mode === 'login' ? 'Sign in' : 'Create account'}
+            </Button>
+
+            <p className="flex items-center justify-center gap-1.5 text-center text-caption">
+              <ShieldCheck className="h-3.5 w-3.5 text-success" aria-hidden />
+              HIPAA-compliant · encrypted · audit logged
+            </p>
+          </form>
+
+          <p className="mt-4 text-center text-body">
+            {mode === 'login' ? (
+              <>
+                New practice?{' '}
+                <button
+                  type="button"
+                  onClick={() => setMode('register')}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Register
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => setMode('login')}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Sign in
+                </button>
+              </>
+            )}
+          </p>
+        </Card>
+
+        {/* Value props — same page, below sign-in */}
+        <section className="mt-12" aria-labelledby="roi-features-heading">
+          <h2 id="roi-features-heading" className="mb-6 text-center text-section-title text-base">
+            What you get
+          </h2>
+          <ul className="grid gap-4 sm:grid-cols-2">
             {ROI_FEATURES.map((feature) => (
               <li key={feature.title}>
-                <Card padding="sm" className="border-white/10 bg-white/5 backdrop-blur-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-white">{feature.title}</p>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                        {feature.description}
-                      </p>
+                <Card hover padding="sm" className="h-full">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-card-title">{feature.title}</p>
+                      <p className="mt-1 text-caption leading-relaxed">{feature.description}</p>
                     </div>
-                    <Badge variant={feature.variant} className="shrink-0">
+                    <Badge variant={feature.variant} className="w-fit shrink-0">
                       {feature.metric}
                     </Badge>
                   </div>
@@ -140,115 +242,10 @@ export default function LoginPage() {
               </li>
             ))}
           </ul>
-
-          <p className="relative mt-8 text-xs text-slate-500">
+          <p className="mt-8 text-center text-caption">
             Practices using unified CRM + warehouse insights report faster reactivation,
             fewer no-shows, and clearer margin on retail &amp; injectables.
           </p>
-        </section>
-
-        <section className="flex flex-col items-center justify-center px-6 py-12 lg:px-12">
-          <div className="w-full max-w-md">
-            <div className="mb-8 lg:hidden">
-              <Badge variant="success" className="mb-2">
-                Revenue-generating platform
-              </Badge>
-              <h1 className="text-page-title">Sign in to your growth dashboard</h1>
-            </div>
-
-            <div className="mb-6 hidden lg:block">
-              <div className="mb-2 flex items-center gap-2 text-primary">
-                <Sparkles className="h-5 w-5" aria-hidden />
-                <span className="text-caption font-medium uppercase tracking-wide">
-                  Spagent Intelligence
-                </span>
-              </div>
-              <h2 className="text-page-title text-2xl">
-                {mode === 'login' ? 'Welcome back' : 'Start growing revenue'}
-              </h2>
-              <p className="mt-2 text-body">
-                {mode === 'login'
-                  ? 'Access upsell insights, campaigns, and AI queries.'
-                  : 'Create your account and connect your data sources.'}
-              </p>
-            </div>
-
-            <Card padding="md" className="shadow-card">
-              <form onSubmit={submit} className="space-y-4">
-                <Input
-                  label="Work email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@clinic.com"
-                  autoComplete="email"
-                />
-                <Input
-                  label="Password"
-                  type="password"
-                  required
-                  minLength={8}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                  helperText="Minimum 8 characters"
-                />
-
-                {error && <AlertBanner variant="error" className="mb-0">{error}</AlertBanner>}
-
-                <Button
-                  type="submit"
-                  loading={loading}
-                  className="w-full"
-                  size="lg"
-                  leftIcon={
-                    !loading ? (
-                      mode === 'login' ? (
-                        <LogIn className="h-5 w-5" aria-hidden />
-                      ) : (
-                        <UserPlus className="h-5 w-5" aria-hidden />
-                      )
-                    ) : undefined
-                  }
-                >
-                  {mode === 'login' ? 'Sign in' : 'Create account'}
-                </Button>
-
-                <p className="flex items-center justify-center gap-1.5 text-center text-caption">
-                  <ShieldCheck className="h-3.5 w-3.5 text-success" aria-hidden />
-                  HIPAA-compliant · encrypted · audit logged
-                </p>
-              </form>
-            </Card>
-
-            <p className="mt-4 text-center text-body">
-              {mode === 'login' ? (
-                <>
-                  New practice?{' '}
-                  <button
-                    type="button"
-                    onClick={() => setMode('register')}
-                    className="font-medium text-primary hover:underline"
-                  >
-                    Register
-                  </button>
-                </>
-              ) : (
-                <>
-                  Already have an account?{' '}
-                  <button
-                    type="button"
-                    onClick={() => setMode('login')}
-                    className="font-medium text-primary hover:underline"
-                  >
-                    Sign in
-                  </button>
-                </>
-              )}
-            </p>
-          </div>
         </section>
       </div>
     </main>
