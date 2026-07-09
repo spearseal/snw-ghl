@@ -4,6 +4,7 @@ SQL-based connector base for INFORMATION_SCHEMA sources.
 from __future__ import annotations
 
 import logging
+from abc import abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
 from semantic_layer.connectors.base import BaseConnector

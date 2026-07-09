@@ -95,6 +95,7 @@ class SemanticLayerPipeline:
             sources_discovered=sources,
             profiles=profiles,
             inferred_relationships=relationships,
+            discovery_errors=discovery_errors,
         )
 
         self._write_outputs(result)

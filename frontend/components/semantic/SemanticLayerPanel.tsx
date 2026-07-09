@@ -50,6 +50,7 @@ export default function SemanticLayerPanel({
   const [loading, setLoading] = useState(true);
   const [building, setBuilding] = useState(false);
   const [discovering, setDiscovering] = useState(false);
+  const [buildWarning, setBuildWarning] = useState<string | null>(null);
 
   const fetchSummary = useCallback(async () => {
     try {
@@ -81,6 +82,7 @@ export default function SemanticLayerPanel({
     }
     setBuilding(true);
     onError(null);
+    setBuildWarning(null);
     try {
       const res = await apiFetch('/api/semantic/build', {
         method: 'POST',
@@ -92,6 +94,15 @@ export default function SemanticLayerPanel({
       const data = await res.json();
       if (!res.ok) {
         throw new Error(typeof data.detail === 'string' ? data.detail : 'Semantic build failed');
+      }
+      if (data.discovery_errors && Object.keys(data.discovery_errors).length > 0) {
+        const parts = Object.entries(data.discovery_errors as Record<string, string>).map(
+          ([name, msg]) => `${name}: ${msg}`,
+        );
+        setBuildWarning(
+          `Model built from ${(data.source_names as string[] | undefined)?.join(', ') || 'available sources'}. ` +
+            `Some sources failed: ${parts.join('; ')}`,
+        );
       }
       await fetchSummary();
     } catch (e) {
@@ -118,6 +129,12 @@ export default function SemanticLayerPanel({
       const data = await res.json();
       if (!res.ok) {
         throw new Error(typeof data.detail === 'string' ? data.detail : 'Discovery failed');
+      }
+      if (data.errors && Object.keys(data.errors).length > 0) {
+        const parts = Object.entries(data.errors as Record<string, string>).map(
+          ([name, msg]) => `${name}: ${msg}`,
+        );
+        onError(`Discovery partial: ${parts.join('; ')}`);
       }
       await fetchSummary();
     } catch (e) {
@@ -192,6 +209,12 @@ export default function SemanticLayerPanel({
           </button>
         </div>
       </div>
+
+      {buildWarning && (
+        <div className="mt-3 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-200">
+          {buildWarning}
+        </div>
+      )}
 
       {summary?.built && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">

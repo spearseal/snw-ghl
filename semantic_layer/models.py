@@ -231,3 +231,4 @@ class PipelineResult(BaseModel):
     sources_discovered: List[SourceMetadata] = Field(default_factory=list)
     profiles: List[TableProfile] = Field(default_factory=list)
     inferred_relationships: List[InferredRelationship] = Field(default_factory=list)
+    discovery_errors: Dict[str, str] = Field(default_factory=dict)

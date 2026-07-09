@@ -118,6 +118,8 @@ def build_semantic_layer(
         'measures': len(result.model.measures),
         'relationships': len(result.model.relationships),
         'sources_discovered': len(result.sources_discovered),
+        'source_names': [s.source_name for s in result.sources_discovered],
+        'discovery_errors': result.discovery_errors or None,
         'output_dir': SEMANTIC_OUTPUT_DIR,
         'yaml_file': f'{result.model.name}.yaml',
         'json_file': f'{result.model.name}.json',

@@ -97,6 +97,34 @@ def save_semantic_config(config: SemanticLayerConfig) -> None:
         json.dump(config.model_dump(), f, indent=2)
 
 
+def normalize_snowflake_config(cfg: Dict[str, str]) -> Dict[str, str]:
+    """Merge connection config with .env defaults for Snowflake discovery."""
+    from snowflake_auth import get_private_key_pem, uses_key_pair_auth
+
+    merged = dict(cfg)
+    merged['account'] = (cfg.get('account') or settings.snowflake_account or '').strip()
+    merged['user'] = (cfg.get('user') or settings.snowflake_user or '').strip()
+    merged['password'] = (cfg.get('password') or settings.snowflake_password or '').strip()
+    merged['warehouse'] = (cfg.get('warehouse') or settings.snowflake_warehouse or '').strip()
+    merged['database'] = (cfg.get('database') or settings.snowflake_database or '').strip()
+    merged['schema'] = (cfg.get('schema') or settings.snowflake_schema or 'PUBLIC').strip()
+    merged['role'] = (cfg.get('role') or settings.snowflake_role or '').strip()
+    merged['custom_tables'] = (cfg.get('custom_tables') or settings.snowflake_custom_tables or '').strip()
+
+    if uses_key_pair_auth(merged):
+        merged['auth_method'] = 'key_pair'
+        if not get_private_key_pem(merged):
+            merged['private_key'] = settings.snowflake_private_key
+        merged['private_key_passphrase'] = (
+            cfg.get('private_key_passphrase') or settings.snowflake_private_key_passphrase or ''
+        ).strip()
+    else:
+        merged['auth_method'] = 'password'
+        merged['passcode'] = (cfg.get('passcode') or settings.snowflake_passcode or '').strip()
+
+    return merged
+
+
 def resolve_semantic_config() -> SemanticLayerConfig:
     """Load config and resolve sources from DB connectors + env (Cloud Run safe)."""
     try:
@@ -114,7 +142,7 @@ def resolve_semantic_config() -> SemanticLayerConfig:
             resolved.append(SourceConnectorConfig(
                 name='snowflake_active',
                 type=SourceType.SNOWFLAKE,
-                config={k: str(v) for k, v in sf.items() if v is not None},
+                config=normalize_snowflake_config(sf),
             ))
 
         ghl = get_active_config('ghl')

@@ -6,9 +6,9 @@ import AppProviders from '@/components/providers/AppProviders';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'GHL + Snowflake Marketing Insights',
+  title: 'Spagent · Revenue Intelligence Platform',
   description:
-    'Marketing insights dashboard with GoHighLevel and Snowflake data, HIPAA-compliant',
+    'HIPAA-compliant revenue platform: automated upselling, memberships, inventory control, and AI for med spas and clinics',
 };
 
 const themeInitScript = `

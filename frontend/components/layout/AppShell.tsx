@@ -9,7 +9,7 @@ import ShortcutsDialog from '@/components/layout/ShortcutsDialog';
 import BottomTaskbar, { TaskbarPanel } from '@/components/layout/BottomTaskbar';
 import { useKeyboardShortcuts } from '@/hooks/useEnterprise';
 import { getToken } from '@/lib/api';
-import { isLoginPath } from '@/lib/routes';
+import { isAuthFlowPath, isLoginPath } from '@/lib/routes';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -57,10 +57,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         setActivePanel(null);
       }},
     ],
-    authenticated && !isLoginPath(pathname),
+    authenticated && !isAuthFlowPath(pathname),
   );
 
-  if (isLoginPath(pathname) || !authenticated) {
+  if (isAuthFlowPath(pathname) || !authenticated) {
     return <>{children}</>;
   }
 

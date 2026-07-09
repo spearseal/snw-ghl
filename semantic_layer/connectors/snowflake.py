@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Tuple
 
+from config import settings
+from semantic_layer.config import normalize_snowflake_config
 from semantic_layer.connectors.sql_base import SQLConnector
 from semantic_layer.models import (
     ColumnMetadata,
@@ -11,23 +14,66 @@ from semantic_layer.models import (
     SourceType,
     TableMetadata,
 )
-from semantic_layer.utils import retry
 
 logger = logging.getLogger('semantic_layer.connectors.snowflake')
+
+_IDENT = re.compile(r'^[A-Za-z_][A-Za-z0-9_$]*$')
 
 
 class SnowflakeConnector(SQLConnector):
     source_type = SourceType.SNOWFLAKE
 
+    def __init__(self, name: str, config: Dict[str, str]):
+        super().__init__(name, normalize_snowflake_config(config))
+
+    @staticmethod
+    def _safe_ident(name: str) -> str:
+        if not _IDENT.match(name):
+            raise ValueError(f'Invalid Snowflake identifier: {name}')
+        return name
+
+    def connect(self, **kwargs: Any) -> None:
+        import snowflake.connector
+        from snowflake_auth import snowflake_connect, uses_key_pair_auth
+
+        passcode = (kwargs.get('passcode') or '').strip() or None
+        self.config = normalize_snowflake_config(self.config)
+
+        if not self.config.get('account') or not self.config.get('user'):
+            raise ValueError('Snowflake account and user are required in DB Connectors.')
+
+        if not self.config.get('database') or not self.config.get('schema'):
+            raise ValueError(
+                'Snowflake database and schema are required in DB Connectors.'
+            )
+
+        if not uses_key_pair_auth(self.config):
+            if not self.config.get('password'):
+                raise ValueError('Snowflake password is required for password-based authentication.')
+            if not passcode and not (self.config.get('passcode') or '').strip():
+                raise ValueError(
+                    'Snowflake uses password + MFA. Enter a fresh 6-digit code in the MFA field above.'
+                )
+
+        self.connection = snowflake_connect(self.config, passcode=passcode)
+        self.cursor = self.connection.cursor(snowflake.connector.DictCursor)
+
+        warehouse = (self.config.get('warehouse') or settings.snowflake_warehouse or '').strip()
+        if warehouse:
+            self.cursor.execute(f'USE WAREHOUSE {self._safe_ident(warehouse)}')
+
+        self._connected = True
+
     def _get_connection(self, passcode: Optional[str] = None) -> Any:
         from snowflake_auth import snowflake_connect
         return snowflake_connect(self.config, passcode=passcode)
 
-    def connect(self, **kwargs: Any) -> None:
-        import snowflake.connector
-        self.connection = self._get_connection(passcode=kwargs.get('passcode'))
-        self.cursor = self.connection.cursor(snowflake.connector.DictCursor)
-        self._connected = True
+    def _database_schema(self) -> Tuple[str, str]:
+        database = (self.config.get('database') or settings.snowflake_database or '').strip()
+        schema = (self.config.get('schema') or settings.snowflake_schema or 'PUBLIC').strip()
+        if not database or not schema:
+            raise ValueError('Snowflake database and schema must be configured.')
+        return database, schema
 
     def _discover_tables(self, database: str, schema: str, max_tables: int) -> List[TableMetadata]:
         db = database.upper()
