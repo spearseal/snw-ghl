@@ -9,7 +9,7 @@ import ShortcutsDialog from '@/components/layout/ShortcutsDialog';
 import BottomTaskbar, { TaskbarPanel } from '@/components/layout/BottomTaskbar';
 import { useKeyboardShortcuts } from '@/hooks/useEnterprise';
 import { getToken } from '@/lib/api';
-import { isAuthFlowPath, isLoginPath } from '@/lib/routes';
+import { isAuthFlowPath } from '@/lib/routes';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -50,12 +50,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       { key: 'b', meta: true, handler: toggleSidebar, label: 'Sidebar' },
       { key: 'p', meta: true, handler: () => window.print(), label: 'Print' },
       { key: '?', handler: () => setShortcutsOpen(true), label: 'Shortcuts' },
-      { key: 'Escape', handler: () => {
-        setSearchOpen(false);
-        setShortcutsOpen(false);
-        setMobileNavOpen(false);
-        setActivePanel(null);
-      }},
+      {
+        key: 'Escape',
+        handler: () => {
+          setSearchOpen(false);
+          setShortcutsOpen(false);
+          setMobileNavOpen(false);
+          setActivePanel(null);
+        },
+      },
     ],
     authenticated && !isAuthFlowPath(pathname),
   );
@@ -65,7 +68,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-surface">
       <a href="#main-content" className="skip-link">
         Skip to main content
       </a>
@@ -76,7 +79,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         onSearchClick={() => setSearchOpen(true)}
       />
 
-      <div className="lg:ml-60">
+      <div className="lg:ml-[var(--sidebar-width)]">
         <TopBar
           onMenuClick={toggleSidebar}
           onSearchClick={() => setSearchOpen(true)}
@@ -85,7 +88,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <main
           id="main-content"
-          className="min-h-screen px-4 pb-20 pt-4 sm:px-6 lg:pb-16 lg:pt-0"
+          className="page-container min-h-[calc(100vh-var(--header-height))] py-6 pb-24 lg:pb-20"
         >
           {children}
         </main>

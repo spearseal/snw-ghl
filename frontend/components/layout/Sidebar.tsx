@@ -27,18 +27,18 @@ export default function Sidebar({ mobileOpen, onMobileClose, onSearchClick }: Si
 
   const navContent = (
     <>
-      <div className="border-b border-slate-200 px-5 py-5 dark:border-slate-800">
-        <Link href="/" className="flex items-center gap-2.5" onClick={onMobileClose}>
-          <div className="flex items-center gap-1 rounded-lg bg-indigo-600/20 p-2">
-            <Database className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
-            <Snowflake className="h-4 w-4 text-sky-500 dark:text-sky-400" />
+      <div className="border-b border-border px-5 py-5">
+        <Link href="/" className="flex items-center gap-3" onClick={onMobileClose}>
+          <div className="flex items-center gap-1 rounded-lg bg-primary-subtle p-2">
+            <Database className="h-4 w-4 text-primary" />
+            <Snowflake className="h-4 w-4 text-info" />
           </div>
-          <div>
-            <p className="text-sm font-semibold leading-tight text-slate-900 dark:text-slate-100">
-              GHL + Snowflake
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight text-fg">
+              Spagent
             </p>
-            <p className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck className="h-3 w-3" />
+            <p className="flex items-center gap-1 text-caption text-success">
+              <ShieldCheck className="h-3 w-3" aria-hidden />
               HIPAA
             </p>
           </div>
@@ -49,12 +49,12 @@ export default function Sidebar({ mobileOpen, onMobileClose, onSearchClick }: Si
         <button
           type="button"
           onClick={onSearchClick}
-          className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+          className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg-subtle transition-colors duration-fast hover:bg-surface-overlay hover:text-fg"
           aria-label="Open global search"
         >
-          <Search className="h-4 w-4" />
+          <Search className="h-4 w-4" aria-hidden />
           <span>Search…</span>
-          <kbd className="ml-auto rounded border border-slate-300 px-1.5 text-[10px] dark:border-slate-600">
+          <kbd className="ml-auto rounded border border-border px-1.5 text-[10px] text-fg-subtle">
             ⌘K
           </kbd>
         </button>
@@ -70,30 +70,32 @@ export default function Sidebar({ mobileOpen, onMobileClose, onSearchClick }: Si
               onClick={onMobileClose}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition',
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-fast',
                 active
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/30'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100',
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-fg-muted hover:bg-surface-overlay hover:text-fg',
               )}
             >
               <Icon className="h-4 w-4 shrink-0" aria-hidden />
-              {label}
+              <span className="truncate">{label}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="border-t border-slate-200 p-4 dark:border-slate-800">
+      <div className="border-t border-border p-4">
         {email && (
           <button
             type="button"
             onClick={logout}
             title={`${email} — Log out`}
             aria-label={`Log out (${email})`}
-            className="group relative flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold tracking-wide text-white transition hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+            className="group relative flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold tracking-wide text-white transition-all duration-fast hover:bg-primary-hover"
           >
-            <span className="transition group-hover:opacity-0">{getEmailInitials(email)}</span>
-            <LogOut className="absolute h-4 w-4 opacity-0 transition group-hover:opacity-100" aria-hidden />
+            <span className="transition-opacity duration-fast group-hover:opacity-0">
+              {getEmailInitials(email)}
+            </span>
+            <LogOut className="absolute h-4 w-4 opacity-0 transition-opacity duration-fast group-hover:opacity-100" aria-hidden />
           </button>
         )}
       </div>
@@ -105,7 +107,7 @@ export default function Sidebar({ mobileOpen, onMobileClose, onSearchClick }: Si
       {mobileOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
           aria-label="Close navigation menu"
           onClick={onMobileClose}
         />
@@ -113,7 +115,7 @@ export default function Sidebar({ mobileOpen, onMobileClose, onSearchClick }: Si
 
       <aside
         className={cn(
-          'fixed left-0 top-0 z-50 flex h-screen w-60 flex-col border-r border-slate-200 bg-white/95 backdrop-blur transition-transform duration-200 dark:border-slate-800 dark:bg-slate-950/95 lg:z-40 lg:translate-x-0',
+          'fixed left-0 top-0 z-50 flex h-screen w-[var(--sidebar-width)] flex-col border-r border-border bg-surface-raised/95 backdrop-blur-md transition-transform duration-200 lg:z-40 lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
         aria-label="Sidebar"
@@ -121,7 +123,7 @@ export default function Sidebar({ mobileOpen, onMobileClose, onSearchClick }: Si
         <button
           type="button"
           onClick={onMobileClose}
-          className="absolute right-3 top-4 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden dark:hover:bg-slate-800"
+          className="absolute right-3 top-4 rounded-lg p-1.5 text-fg-muted hover:bg-surface-overlay lg:hidden"
           aria-label="Close menu"
         >
           <X className="h-4 w-4" />

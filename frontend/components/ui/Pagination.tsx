@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { PaginatedMeta } from '@/lib/types/common';
 import { cn } from '@/lib/cn';
+import Button from './Button';
 
 interface PaginationProps {
   meta: PaginatedMeta;
@@ -23,25 +24,25 @@ export default function Pagination({
   return (
     <nav
       className={cn(
-        'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between',
+        'flex flex-col gap-4 rounded-card border border-border bg-surface-raised px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
         className,
       )}
       aria-label="Pagination"
     >
-      <p className="text-sm text-slate-500">
-        Showing <span className="font-medium text-slate-700 dark:text-slate-300">{start}</span>
-        –<span className="font-medium text-slate-700 dark:text-slate-300">{end}</span> of{' '}
-        <span className="font-medium text-slate-700 dark:text-slate-300">{meta.total}</span>
+      <p className="text-caption">
+        Showing <span className="font-medium text-fg">{start}</span>
+        –<span className="font-medium text-fg">{end}</span> of{' '}
+        <span className="font-medium text-fg">{meta.total}</span>
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
         {onPageSizeChange && (
-          <label className="flex items-center gap-2 text-sm text-slate-500">
+          <label className="flex items-center gap-2 text-caption">
             <span className="sr-only sm:not-sr-only">Per page</span>
             <select
               value={meta.page_size}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
+              className="h-8 rounded-lg border border-border bg-surface-raised px-2 text-sm text-fg"
               aria-label="Items per page"
             >
               {pageSizeOptions.map((n) => (
@@ -53,31 +54,27 @@ export default function Pagination({
           </label>
         )}
 
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => onPageChange(meta.page - 1)}
           disabled={!meta.has_prev}
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-slate-700"
-          aria-label="Previous page"
+          leftIcon={<ChevronLeft className="h-4 w-4" aria-hidden />}
         >
-          <ChevronLeft className="h-4 w-4" />
-          <span className="hidden sm:inline">Prev</span>
-        </button>
-
-        <span className="px-2 text-sm text-slate-600 dark:text-slate-400" aria-current="page">
-          {meta.page} / {meta.total_pages}
+          Prev
+        </Button>
+        <span className="min-w-[4rem] text-center text-sm font-medium text-fg">
+          {meta.page} / {meta.total_pages || 1}
         </span>
-
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => onPageChange(meta.page + 1)}
           disabled={!meta.has_next}
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-slate-700"
-          aria-label="Next page"
+          rightIcon={<ChevronRight className="h-4 w-4" aria-hidden />}
         >
-          <span className="hidden sm:inline">Next</span>
-          <ChevronRight className="h-4 w-4" />
-        </button>
+          Next
+        </Button>
       </div>
     </nav>
   );

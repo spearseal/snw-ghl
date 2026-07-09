@@ -1,4 +1,8 @@
+import { memo } from 'react';
 import { TrendingUp, AlertTriangle, Database, Snowflake } from 'lucide-react';
+import Badge from '@/components/ui/Badge';
+import { Card } from '@/components/ui/Card';
+import { cn } from '@/lib/cn';
 
 export interface KpiData {
   key: string;
@@ -10,57 +14,47 @@ export interface KpiData {
   format?: string;
 }
 
-const SOURCE_STYLES: Record<string, { bg: string; text: string; icon: typeof Database }> = {
-  GoHighLevel: {
-    bg: 'from-violet-100 to-violet-50 dark:from-violet-600/20 dark:to-violet-900/10',
-    text: 'text-violet-600 dark:text-violet-300',
-    icon: Database,
-  },
-  Snowflake: {
-    bg: 'from-sky-100 to-sky-50 dark:from-sky-600/20 dark:to-sky-900/10',
-    text: 'text-sky-600 dark:text-sky-300',
-    icon: Snowflake,
-  },
-  'GoHighLevel + Snowflake': {
-    bg: 'from-indigo-100 to-emerald-50 dark:from-indigo-600/20 dark:to-emerald-900/10',
-    text: 'text-indigo-600 dark:text-indigo-300',
-    icon: TrendingUp,
-  },
+const SOURCE_VARIANT: Record<string, 'primary' | 'info' | 'success'> = {
+  GoHighLevel: 'primary',
+  Snowflake: 'info',
+  'GoHighLevel + Snowflake': 'success',
 };
 
-export default function KpiCard({ kpi }: { kpi: KpiData }) {
-  const style = SOURCE_STYLES[kpi.source] || SOURCE_STYLES['GoHighLevel + Snowflake'];
-  const Icon = style.icon;
+const SOURCE_ICON: Record<string, typeof Database> = {
+  GoHighLevel: Database,
+  Snowflake: Snowflake,
+  'GoHighLevel + Snowflake': TrendingUp,
+};
+
+function KpiCard({ kpi }: { kpi: KpiData }) {
+  const variant = SOURCE_VARIANT[kpi.source] ?? 'success';
+  const Icon = SOURCE_ICON[kpi.source] ?? TrendingUp;
   const isAttention = kpi.trend === 'attention';
 
   return (
-    <div
-      className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-5 transition hover:border-slate-300 dark:hover:border-slate-600 ${
-        isAttention
-          ? 'border-amber-300 from-amber-50 to-slate-100 dark:border-amber-700/50 dark:from-amber-950/30 dark:to-slate-900/60'
-          : `border-slate-200 dark:border-slate-800 ${style.bg}`
-      }`}
+    <Card
+      hover
+      accent={isAttention ? 'warning' : 'none'}
+      className={cn(
+        'relative',
+        isAttention && 'border-warning/40 bg-warning-subtle/30',
+      )}
     >
       {isAttention && (
-        <AlertTriangle className="absolute right-4 top-4 h-4 w-4 text-amber-500 dark:text-amber-400" />
+        <AlertTriangle
+          className="absolute right-4 top-4 h-4 w-4 text-warning"
+          aria-label="Needs attention"
+        />
       )}
-      <div className="mb-3 flex items-center gap-2">
-        <Icon className={`h-4 w-4 ${isAttention ? 'text-amber-500 dark:text-amber-400' : style.text}`} />
-        <span
-          className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-            isAttention
-              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-              : 'bg-slate-200/80 text-slate-600 dark:bg-slate-800/80 dark:text-slate-400'
-          }`}
-        >
-          {kpi.source}
-        </span>
+      <div className="relative mb-4 flex items-center gap-2">
+        <Icon className={cn('h-4 w-4', isAttention ? 'text-warning' : 'text-primary')} aria-hidden />
+        <Badge variant={isAttention ? 'warning' : variant}>{kpi.source}</Badge>
       </div>
-      <p className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">{kpi.value}</p>
-      <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-200">{kpi.label}</p>
-      {kpi.detail && (
-        <p className="mt-2 text-xs leading-relaxed text-slate-500">{kpi.detail}</p>
-      )}
-    </div>
+      <p className="text-3xl font-semibold tracking-tight text-fg">{kpi.value}</p>
+      <p className="mt-1 text-card-title">{kpi.label}</p>
+      {kpi.detail && <p className="mt-2 text-caption leading-relaxed">{kpi.detail}</p>}
+    </Card>
   );
 }
+
+export default memo(KpiCard);

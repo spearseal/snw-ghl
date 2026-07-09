@@ -2,6 +2,7 @@
 
 import { Menu, Search } from 'lucide-react';
 import ThemeToggle from '@/components/ThemeToggle';
+import Button from '@/components/ui/Button';
 
 interface TopBarProps {
   onMenuClick: () => void;
@@ -11,40 +12,42 @@ interface TopBarProps {
 
 export default function TopBar({ onMenuClick, onSearchClick, onShortcutsClick }: TopBarProps) {
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-slate-200 bg-white/95 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 print:hidden">
-      <button
-        type="button"
+    <header
+      className="sticky top-0 z-30 flex h-[var(--header-height)] items-center gap-2 border-b border-border bg-surface-raised/90 px-4 shadow-header backdrop-blur-md sm:px-6 print:hidden"
+      role="banner"
+    >
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={onMenuClick}
-        className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden dark:text-slate-400 dark:hover:bg-slate-800"
+        className="lg:hidden"
         aria-label="Open navigation menu"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
+        leftIcon={<Menu className="h-5 w-5" />}
+      />
 
       <button
         type="button"
         onClick={onSearchClick}
-        className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-500 lg:max-w-xs lg:flex-none dark:border-slate-700 dark:bg-slate-900"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-left text-sm text-fg-subtle transition-colors duration-fast hover:border-primary/30 hover:bg-surface-overlay lg:max-w-sm lg:flex-none"
         aria-label="Open global search"
       >
-        <Search className="h-4 w-4 shrink-0" />
-        <span className="hidden sm:inline">Search…</span>
-        <kbd className="ml-auto hidden rounded border border-slate-300 px-1.5 text-[10px] sm:inline dark:border-slate-600">
+        <Search className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="hidden truncate sm:inline">Search pages and actions…</span>
+        <kbd className="ml-auto hidden shrink-0 rounded border border-border px-1.5 text-[10px] text-fg-subtle sm:inline">
           ⌘K
         </kbd>
       </button>
 
       <div className="ml-auto flex items-center gap-1">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onShortcutsClick}
-          className="rounded-lg p-2 text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
           aria-label="Keyboard shortcuts"
           title="Keyboard shortcuts"
         >
           ?
-        </button>
-
+        </Button>
         <ThemeToggle showLabel={false} />
       </div>
     </header>

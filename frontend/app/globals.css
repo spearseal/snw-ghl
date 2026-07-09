@@ -2,22 +2,84 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Design tokens (light) ─── */
+:root {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --surface: 248 250 252;
+  --surface-raised: 255 255 255;
+  --surface-overlay: 255 255 255;
+  --border: 226 232 240;
+  --border-subtle: 241 245 249;
+  --fg: 15 23 42;
+  --fg-muted: 71 85 105;
+  --fg-subtle: 100 116 139;
+
+  --primary: 79 70 229;
+  --primary-hover: 67 56 202;
+  --primary-subtle: 238 242 255;
+
+  --success: 16 185 129;
+  --success-subtle: 236 253 245;
+  --warning: 245 158 11;
+  --warning-subtle: 255 251 235;
+  --danger: 239 68 68;
+  --danger-subtle: 254 242 242;
+  --info: 14 165 233;
+  --info-subtle: 240 249 255;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow-card-hover: 0 4px 12px rgb(15 23 42 / 0.08), 0 2px 4px rgb(15 23 42 / 0.04);
+  --shadow-header: 0 1px 0 rgb(15 23 42 / 0.06);
+  --radius-card: 0.75rem;
+
+  --sidebar-width: 15rem;
+  --header-height: 3.5rem;
+}
+
+html.dark {
+  --surface: 2 6 23;
+  --surface-raised: 15 23 42;
+  --surface-overlay: 30 41 59;
+  --border: 51 65 85;
+  --border-subtle: 30 41 59;
+  --fg: 248 250 252;
+  --fg-muted: 148 163 184;
+  --fg-subtle: 100 116 139;
+
+  --primary: 129 140 248;
+  --primary-hover: 165 180 252;
+  --primary-subtle: 30 27 75;
+
+  --success: 52 211 153;
+  --success-subtle: 6 78 59;
+  --warning: 251 191 36;
+  --warning-subtle: 69 26 3;
+  --danger: 248 113 113;
+  --danger-subtle: 69 10 10;
+  --info: 56 189 248;
+  --info-subtle: 8 47 73;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.2), 0 1px 3px rgb(0 0 0 / 0.3);
+  --shadow-card-hover: 0 8px 24px rgb(0 0 0 / 0.35);
+  --shadow-header: 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
 @layer base {
   html {
     @apply antialiased;
     scroll-behavior: smooth;
+    text-rendering: optimizeLegibility;
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 transition-colors duration-200;
-  }
-
-  html.dark body {
-    @apply bg-slate-950 text-slate-100;
+    @apply bg-surface text-fg transition-colors duration-200;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-indigo-500;
+    @apply outline-2 outline-offset-2 outline-primary;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -36,7 +98,50 @@
 
 @layer components {
   .skip-link {
-    @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded-lg focus:bg-indigo-600 focus:px-4 focus:py-2 focus:text-white;
+    @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-white;
+  }
+
+  .page-container {
+    @apply mx-auto w-full max-w-content px-4 sm:px-6 lg:px-8;
+  }
+
+  .page-container-narrow {
+    @apply mx-auto w-full max-w-narrow px-4 sm:px-6 lg:px-8;
+  }
+
+  .text-page-title {
+    @apply text-2xl font-semibold tracking-tight text-fg sm:text-3xl;
+  }
+
+  .text-section-title {
+    @apply text-lg font-semibold tracking-tight text-fg sm:text-xl;
+  }
+
+  .text-card-title {
+    @apply text-sm font-medium text-fg;
+  }
+
+  .text-body {
+    @apply text-sm leading-relaxed text-fg-muted;
+  }
+
+  .text-caption {
+    @apply text-xs text-fg-subtle;
+  }
+
+  .text-helper {
+    @apply text-xs text-fg-muted;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      rgb(var(--border-subtle)) 0%,
+      rgb(var(--surface-raised)) 50%,
+      rgb(var(--border-subtle)) 100%
+    );
+    background-size: 200% 100%;
+    @apply animate-shimmer;
   }
 }
 
@@ -58,27 +163,5 @@
     background: white !important;
     color: black !important;
     font-size: 11pt;
-  }
-
-  h1[data-print-title]::before {
-    content: attr(data-print-title);
-    display: block;
-    font-size: 18pt;
-    font-weight: 700;
-    margin-bottom: 12pt;
-  }
-
-  h1[data-print-title] {
-    font-size: 0;
-  }
-
-  a[href]::after {
-    content: none;
-  }
-
-  .rounded-2xl,
-  .rounded-xl {
-    border: 1px solid #ccc !important;
-    break-inside: avoid;
   }
 }

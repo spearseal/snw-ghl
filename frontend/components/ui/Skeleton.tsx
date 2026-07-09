@@ -6,21 +6,15 @@ interface SkeletonProps {
 
 export function Skeleton({ className }: SkeletonProps) {
   return (
-    <div
-      className={cn(
-        'animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800',
-        className,
-      )}
-      aria-hidden
-    />
+    <div className={cn('shimmer rounded-lg', className)} aria-hidden />
   );
 }
 
 export function PageHeaderSkeleton() {
   return (
-    <div className="mb-8 space-y-3">
+    <div className="mb-8 space-y-3" aria-busy="true" aria-label="Loading page header">
       <Skeleton className="h-4 w-32" />
-      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-9 w-64" />
       <Skeleton className="h-4 w-full max-w-lg" />
     </div>
   );
@@ -28,9 +22,9 @@ export function PageHeaderSkeleton() {
 
 export function CardGridSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" aria-busy="true" aria-label="Loading cards">
       {Array.from({ length: count }).map((_, i) => (
-        <Skeleton key={i} className="h-20" />
+        <Skeleton key={i} className="h-36 rounded-card" />
       ))}
     </div>
   );
@@ -49,7 +43,7 @@ export function ListSkeleton({ rows = 5 }: { rows?: number }) {
 export function TableSkeleton({ rows = 6 }: { rows?: number }) {
   return (
     <div className="space-y-2" aria-busy="true" aria-label="Loading table">
-      <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-10 w-full rounded-card" />
       {Array.from({ length: rows }).map((_, i) => (
         <Skeleton key={i} className="h-12 w-full" />
       ))}

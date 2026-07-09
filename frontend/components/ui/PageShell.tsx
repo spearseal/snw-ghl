@@ -3,6 +3,8 @@
 import type { ReactNode } from 'react';
 import { Loader2, RefreshCw, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import Button from './Button';
+import Input from './Input';
 
 interface PageShellProps {
   eyebrow?: string;
@@ -13,6 +15,8 @@ interface PageShellProps {
   children: ReactNode;
   className?: string;
   printTitle?: string;
+  /** narrow = 64rem, default = 90rem */
+  width?: 'default' | 'narrow' | 'full';
 }
 
 export default function PageShell({
@@ -24,29 +28,37 @@ export default function PageShell({
   children,
   className,
   printTitle,
+  width = 'default',
 }: PageShellProps) {
+  const widthClass =
+    width === 'narrow'
+      ? 'max-w-narrow'
+      : width === 'full'
+        ? 'max-w-none'
+        : 'max-w-content';
+
   return (
-    <div className={cn('mx-auto w-full max-w-5xl print:max-w-none', className)}>
-      <header className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-start sm:justify-between print:mb-4">
+    <div className={cn('mx-auto w-full', widthClass, className)}>
+      <header className="mb-6 flex flex-col gap-4 sm:mb-8 lg:flex-row lg:items-start lg:justify-between print:mb-4">
         <div className="min-w-0">
           {eyebrow && (
-            <div className="mb-1 flex items-center gap-2 text-indigo-500 dark:text-indigo-400">
-              {EyebrowIcon && <EyebrowIcon className="h-5 w-5 shrink-0" aria-hidden />}
-              <span className="text-xs font-medium uppercase tracking-wider">{eyebrow}</span>
+            <div className="mb-2 flex items-center gap-2 text-primary">
+              {EyebrowIcon && <EyebrowIcon className="h-4 w-4 shrink-0" aria-hidden />}
+              <span className="text-caption font-medium uppercase tracking-wider">{eyebrow}</span>
             </div>
           )}
           <h1
-            className="text-xl font-bold text-slate-900 dark:text-slate-50 sm:text-2xl"
+            className="text-page-title"
             data-print-title={printTitle ?? title}
           >
             {title}
           </h1>
-          {description && (
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{description}</p>
-          )}
+          {description && <p className="mt-2 text-body">{description}</p>}
         </div>
         {actions && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden">{actions}</div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden" data-print-hide>
+            {actions}
+          </div>
         )}
       </header>
       {children}
@@ -62,19 +74,9 @@ interface RefreshButtonProps {
 
 export function RefreshButton({ onClick, loading, label = 'Refresh' }: RefreshButtonProps) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={loading}
-      className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-50"
-    >
-      {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-      ) : (
-        <RefreshCw className="h-4 w-4" aria-hidden />
-      )}
+    <Button onClick={onClick} loading={loading} leftIcon={!loading ? <RefreshCw className="h-4 w-4" aria-hidden /> : undefined}>
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -85,7 +87,7 @@ interface MfaInputProps {
 
 export function MfaInput({ value, onChange }: MfaInputProps) {
   return (
-    <input
+    <Input
       type="text"
       inputMode="numeric"
       autoComplete="one-time-code"
@@ -94,28 +96,29 @@ export function MfaInput({ value, onChange }: MfaInputProps) {
       onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
       placeholder="Snowflake MFA"
       aria-label="Snowflake MFA code"
-      className="w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 dark:border-slate-700 dark:bg-slate-950"
+      inputClassName="w-28 font-mono text-xs"
     />
   );
 }
 
 interface AlertBannerProps {
-  variant: 'error' | 'success' | 'warning';
+  variant: 'error' | 'success' | 'warning' | 'info';
   children: ReactNode;
   className?: string;
 }
 
 const ALERT_STYLES = {
-  error: 'border-red-200 bg-red-50 text-red-800 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-300',
-  success: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300',
-  warning: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-200',
+  error: 'border-danger/30 bg-danger-subtle text-danger',
+  success: 'border-success/30 bg-success-subtle text-success',
+  warning: 'border-warning/30 bg-warning-subtle text-warning',
+  info: 'border-info/30 bg-info-subtle text-info',
 };
 
 export function AlertBanner({ variant, children, className }: AlertBannerProps) {
   return (
     <div
       role="alert"
-      className={cn('mb-4 rounded-xl border px-4 py-3 text-sm', ALERT_STYLES[variant], className)}
+      className={cn('mb-4 rounded-card border px-4 py-3 text-sm', ALERT_STYLES[variant], className)}
     >
       {children}
     </div>
