@@ -1,16 +1,15 @@
 'use client';
 
-import { LogIn, ShieldCheck, Sparkles, TrendingUp, UserPlus } from 'lucide-react';
+import { LogIn, Sparkles, TrendingUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import LoginModal from '@/components/auth/LoginModal';
 import ThemeToggle from '@/components/ThemeToggle';
 import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
-import { Card } from '@/components/ui/Card';
-import { AlertBanner } from '@/components/ui/PageShell';
 import Badge from '@/components/ui/Badge';
-import { getToken, setSession } from '@/lib/api';
-import { DEFAULT_APP_ROUTE, WELCOME_ROUTE } from '@/lib/routes';
+import { Card } from '@/components/ui/Card';
+import { getToken } from '@/lib/api';
+import { DEFAULT_APP_ROUTE } from '@/lib/routes';
 
 const ROI_FEATURES = [
   {
@@ -52,44 +51,13 @@ const ROI_FEATURES = [
 
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loginOpen, setLoginOpen] = useState(false);
 
   useEffect(() => {
     if (getToken()) {
       router.replace(DEFAULT_APP_ROUTE);
     }
   }, [router]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/auth/${mode}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          typeof data.detail === 'string'
-            ? data.detail
-            : (data.detail as Array<{ msg: string }>)?.[0]?.msg || `${mode} failed`,
-        );
-      }
-      setSession(data.token as string, data.email as string);
-      router.push(WELCOME_ROUTE);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : `${mode} failed`);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <main className="relative min-h-screen bg-surface">
@@ -98,13 +66,22 @@ export default function LoginPage() {
         <div className="absolute bottom-0 right-0 h-80 w-80 rounded-full bg-success/10 blur-3xl" />
       </div>
 
-      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
+      <div className="absolute right-4 top-4 z-20 flex items-center gap-2 sm:right-6 sm:top-6">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setLoginOpen(true)}
+          leftIcon={<LogIn className="h-4 w-4" aria-hidden />}
+        >
+          Log in
+        </Button>
         <ThemeToggle showLabel={false} />
       </div>
 
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+
       <div className="page-container relative z-10 mx-auto max-w-3xl py-12 sm:py-16 lg:py-20">
-        {/* Hero */}
-        <header className="mb-10 text-center">
+        <header className="mb-12 text-center">
           <div className="mb-4 flex justify-center">
             <Badge variant="success">
               <TrendingUp className="mr-1.5 inline h-3.5 w-3.5" aria-hidden />
@@ -128,100 +105,7 @@ export default function LoginPage() {
           </p>
         </header>
 
-        {/* Sign in */}
-        <Card padding="md" className="mx-auto max-w-md shadow-card">
-          <div className="mb-6 text-center">
-            <h2 className="text-section-title text-lg">
-              {mode === 'login' ? 'Welcome back' : 'Start growing revenue'}
-            </h2>
-            <p className="mt-1 text-body">
-              {mode === 'login'
-                ? 'Sign in to access upsell insights, campaigns, and AI queries.'
-                : 'Create your account and connect your data sources.'}
-            </p>
-          </div>
-
-          <form onSubmit={submit} className="space-y-4">
-            <Input
-              label="Work email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@clinic.com"
-              autoComplete="email"
-            />
-            <Input
-              label="Password"
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              helperText="Minimum 8 characters"
-            />
-
-            {error && (
-              <AlertBanner variant="error" className="mb-0">
-                {error}
-              </AlertBanner>
-            )}
-
-            <Button
-              type="submit"
-              loading={loading}
-              className="w-full"
-              size="lg"
-              leftIcon={
-                !loading ? (
-                  mode === 'login' ? (
-                    <LogIn className="h-5 w-5" aria-hidden />
-                  ) : (
-                    <UserPlus className="h-5 w-5" aria-hidden />
-                  )
-                ) : undefined
-              }
-            >
-              {mode === 'login' ? 'Sign in' : 'Create account'}
-            </Button>
-
-            <p className="flex items-center justify-center gap-1.5 text-center text-caption">
-              <ShieldCheck className="h-3.5 w-3.5 text-success" aria-hidden />
-              HIPAA-compliant · encrypted · audit logged
-            </p>
-          </form>
-
-          <p className="mt-4 text-center text-body">
-            {mode === 'login' ? (
-              <>
-                New practice?{' '}
-                <button
-                  type="button"
-                  onClick={() => setMode('register')}
-                  className="font-medium text-primary hover:underline"
-                >
-                  Register
-                </button>
-              </>
-            ) : (
-              <>
-                Already have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => setMode('login')}
-                  className="font-medium text-primary hover:underline"
-                >
-                  Sign in
-                </button>
-              </>
-            )}
-          </p>
-        </Card>
-
-        {/* Value props — same page, below sign-in */}
-        <section className="mt-12" aria-labelledby="roi-features-heading">
+        <section aria-labelledby="roi-features-heading">
           <h2 id="roi-features-heading" className="mb-6 text-center text-section-title text-base">
             What you get
           </h2>

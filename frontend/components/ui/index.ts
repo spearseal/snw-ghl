@@ -1,3 +1,4 @@
+export { default as Modal } from './Modal';
 export { default as Button } from './Button';
 export { Card, CardHeader } from './Card';
 export { default as Input } from './Input';
